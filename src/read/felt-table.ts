@@ -22,22 +22,30 @@ export type FeltCard = UnsuitedFeltCard | SuitedFeltCard;
 
 export type HandTotal = {
   seat: FeltSeat;
+  /** Set on a split pile. Absent on an unsplit seat. */
+  hand?: "A" | "B";
   total: number;
   /** bust=#ef4444; 21=cyan; ≥17=#22c55e; else=#ffd43f */
   colour: "#ef4444" | "cyan" | "#22c55e" | "#ffd43f";
   label: string;
 };
 
+export type SplitPile = {
+  seat: FeltSeat;
+  hand: "A" | "B";
+  cards: FeltCard[];
+};
+
 export type FeltTable = {
   seat_order: "D,7,6,5,4,3,2,1";
   seat_piles: { seat: FeltSeat; cards: FeltCard[] }[];
-  split_piles: readonly [];
+  split_piles: SplitPile[];
   hand_totals: HandTotal[];
   /** UI chrome from the felt screen contract. Not events. */
   screen: {
     focus_seat: "1";
     hero_seat: "1";
-    split_button_visible: false;
+    split_button_visible: boolean;
     new_shoe: "start_shoe";
     next_hand: "complete_hand";
   };
@@ -90,16 +98,49 @@ function totalColour(total: number): HandTotal["colour"] {
 function withHandTotals(table: FeltTable): FeltTable {
   const hand_totals: HandTotal[] = [];
   for (const pile of table.seat_piles) {
-    if (pile.cards.length === 0) continue;
-    const total = blackjackTotal(pile.cards.map((card) => card.rank));
-    hand_totals.push({
-      seat: pile.seat,
-      total,
-      colour: totalColour(total),
-      label: `Total: ${total}`,
-    });
+    if (pile.cards.length > 0) {
+      const total = blackjackTotal(pile.cards.map((card) => card.rank));
+      hand_totals.push({
+        seat: pile.seat,
+        total,
+        colour: totalColour(total),
+        label: `Total: ${total}`,
+      });
+    }
+    for (const split of table.split_piles) {
+      if (split.seat !== pile.seat || split.cards.length === 0) continue;
+      const total = blackjackTotal(split.cards.map((card) => card.rank));
+      hand_totals.push({
+        seat: split.seat,
+        hand: split.hand,
+        total,
+        colour: totalColour(total),
+        label: `Total: ${total}`,
+      });
+    }
   }
-  return { ...table, hand_totals };
+  return {
+    ...table,
+    hand_totals,
+    screen: {
+      ...table.screen,
+      split_button_visible: heroPairVisible(table),
+    },
+  };
+}
+
+/** Split button: hero seat, exactly two cards, identical rank, not already split. */
+function heroPairVisible(table: FeltTable): boolean {
+  const hero = table.screen.hero_seat;
+  if (table.split_piles.some((pile) => pile.seat === hero)) return false;
+  const pile = table.seat_piles.find((seat) => seat.seat === hero);
+  const [first, second] = pile?.cards ?? [];
+  return (
+    pile?.cards.length === 2 &&
+    first !== undefined &&
+    second !== undefined &&
+    first.rank === second.rank
+  );
 }
 
 /**
@@ -107,6 +148,7 @@ function withHandTotals(table: FeltTable): FeltTable {
  * Shoe started and Hand completed clear piles.
  * Card observed appends rank on that seat; suit stays unset.
  * Card suit set paints the latest card on that seat (rank + suit face).
+ * Hand split moves that pair into split piles A (first card) and B (second).
  */
 export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
   let seenShoe = false;
@@ -135,6 +177,29 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
         throw new Error(`no observed card on seat ${event.seat}`);
       }
       pile.cards[index] = piledCard(card.rank, event.suit);
+    } else if (event.type === "hand_split" && table) {
+      const pile = table.seat_piles.find((seat) => seat.seat === event.seat);
+      if (!pile) {
+        throw new Error(`no felt pile for seat ${event.seat}`);
+      }
+      if (table.split_piles.some((split) => split.seat === event.seat)) {
+        throw new Error(`hand_split on seat ${event.seat} is already split`);
+      }
+      const [first, second] = pile.cards;
+      if (
+        pile.cards.length !== 2 ||
+        first === undefined ||
+        second === undefined ||
+        first.rank !== second.rank
+      ) {
+        throw new Error(`hand_split on seat ${event.seat} is not a pair`);
+      }
+      pile.cards = [];
+      table.split_piles = [
+        ...table.split_piles,
+        { seat: event.seat, hand: "A", cards: [first] },
+        { seat: event.seat, hand: "B", cards: [second] },
+      ];
     }
   }
 
