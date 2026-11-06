@@ -1,0 +1,36 @@
+# Run tests on pull requests.
+name: Test
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install and test
+        if: hashFiles('package.json') != ''
+        run: |
+          npm ci
+          npm test
+          npx tsc --noEmit
+
+      - name: No package yet
+        if: hashFiles('package.json') == ''
+        run: |
+          echo "No package.json on this PR — skipping npm test until app code is present."
+          test -f README.md
