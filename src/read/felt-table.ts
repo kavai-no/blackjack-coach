@@ -1,13 +1,24 @@
-import type { Rank } from "../counting/maps.ts";
+import type { Rank, Suit } from "../counting/maps.ts";
+import { piledCard } from "../felt/piled-card.ts";
+import type { MiniCardFace } from "../felt/mini-card-face.ts";
 import { SEATS, type DomainEvent, type Seat } from "../write/events.ts";
 
 export type FeltSeat = Seat;
 
 /** Observed card. Suit stays unset until card_suit_set — no mini face yet. */
-export type FeltCard = {
+export type UnsuitedFeltCard = {
   rank: Rank;
   suit: null;
 };
+
+/** Latest observe on a seat after card_suit_set. Face is the slice-1 mini card. */
+export type SuitedFeltCard = {
+  rank: Rank;
+  suit: Suit;
+  mini_card_face: MiniCardFace;
+};
+
+export type FeltCard = UnsuitedFeltCard | SuitedFeltCard;
 
 export type HandTotal = {
   seat: FeltSeat;
@@ -95,6 +106,7 @@ function withHandTotals(table: FeltTable): FeltTable {
  * Felt table.
  * Shoe started and Hand completed clear piles.
  * Card observed appends rank on that seat; suit stays unset.
+ * Card suit set paints the latest card on that seat (rank + suit face).
  */
 export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
   let seenShoe = false;
@@ -112,6 +124,17 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
         throw new Error(`no felt pile for seat ${event.seat}`);
       }
       pile.cards.push({ rank: event.rank, suit: null });
+    } else if (event.type === "card_suit_set" && table) {
+      const pile = table.seat_piles.find((seat) => seat.seat === event.seat);
+      if (!pile) {
+        throw new Error(`no felt pile for seat ${event.seat}`);
+      }
+      const index = pile.cards.length - 1;
+      const card = pile.cards[index];
+      if (!card) {
+        throw new Error(`no observed card on seat ${event.seat}`);
+      }
+      pile.cards[index] = piledCard(card.rank, event.suit);
     }
   }
 
