@@ -1,4 +1,6 @@
+import { type CountSystem } from "../counting/maps.ts";
 import { runningAce } from "../counting/running-ace.ts";
+import type { DomainEvent } from "../write/events.ts";
 
 /** Original shoe is 8 decks (`SHOE_DECKS` in modules/state.js). */
 export const SHOE_DECKS = 8;
@@ -37,4 +39,119 @@ export function projectCountsAfterShoeStarted(
     throw new Error("empty shoe requires shoe_started");
   }
   return emptyShoeCounts(last.decks);
+}
+
+const PANEL_CHROME = {
+  id: "#infoBar",
+  bg: "linear-gradient(#1e293b,#161b22)",
+  padding: "12px",
+  radius: "10px",
+  font: "0.85rem",
+  info_top: "flex space-evenly",
+  counts_grid: "3-col center",
+} as const;
+
+const LAYOUT_ORDER =
+  "row1: P, D, RA; row2 grid: Hi-Lo RC/TC, APC TC, Zen TC, Omega II TC, Ace TC";
+
+export type CountsInfoBar = {
+  layout_order: typeof LAYOUT_ORDER;
+  penetration: string;
+  decks_left: string;
+  decksLeft: number;
+  acesLeft: number;
+  ra: {
+    label: "RA:";
+    value: string;
+    numeric: number;
+    colour: "#22c55e" | "#ef4444";
+    className: "" | "negative";
+  };
+  hilo_rc: number;
+  hilo_tc: string;
+  hilo_display: string;
+  apc_tc: string;
+  zen_tc: string;
+  omega_ii_tc: string;
+  ace_tc: string;
+  panel_chrome: typeof PANEL_CHROME;
+};
+
+type CountFold = {
+  decks: number;
+  totalRemaining: number;
+  acesLeft: number;
+  rc: Record<CountSystem, number>;
+  aceRC: number;
+};
+
+function zeroRc(): Record<CountSystem, number> {
+  return { HiLo: 0, APC: 0, Zen: 0, OmegaII: 0 };
+}
+
+/** Signed two-decimal count, matching the info-bar contract (`+0.00`). */
+function signedFixed2(n: number): string {
+  const abs = Math.abs(n).toFixed(2);
+  if (n < 0 && Number(abs) !== 0) return `-${abs}`;
+  return `+${abs}`;
+}
+
+function present(fold: CountFold): CountsInfoBar {
+  const decksLeft = Math.max(fold.totalRemaining / CARDS_PER_DECK, 0.01);
+  const penetration = ((1 - fold.totalRemaining / (fold.decks * CARDS_PER_DECK)) * 100).toFixed(2);
+  const tc = (rc: number) => (decksLeft > 0.01 ? rc / decksLeft : 0);
+  const hiloTc = tc(fold.rc.HiLo);
+  const ra = runningAce(fold.acesLeft, decksLeft);
+  const negative = ra < 0;
+
+  return {
+    layout_order: LAYOUT_ORDER,
+    penetration: `P: ${penetration}%`,
+    decks_left: `D: ${decksLeft.toFixed(2)}`,
+    decksLeft,
+    acesLeft: fold.acesLeft,
+    ra: {
+      label: "RA:",
+      value: signedFixed2(ra),
+      numeric: ra,
+      colour: negative ? "#ef4444" : "#22c55e",
+      className: negative ? "negative" : "",
+    },
+    hilo_rc: fold.rc.HiLo,
+    hilo_tc: signedFixed2(hiloTc),
+    hilo_display: `Hi-Lo: ${fold.rc.HiLo} / ${signedFixed2(hiloTc)}`,
+    apc_tc: `APC: ${signedFixed2(tc(fold.rc.APC))}`,
+    zen_tc: `Zen: ${signedFixed2(tc(fold.rc.Zen))}`,
+    omega_ii_tc: `Omega II: ${signedFixed2(tc(fold.rc.OmegaII))}`,
+    ace_tc: `Ace: ${signedFixed2(decksLeft > 0.01 ? fold.aceRC / decksLeft : 0)}`,
+    panel_chrome: PANEL_CHROME,
+  };
+}
+
+/**
+ * Counts / info bar. Shoe started resets P/D/RA and running counts.
+ * Hand completed does not — the shoe persists.
+ */
+export function projectCountsInfoBar(
+  events: readonly DomainEvent[],
+): CountsInfoBar {
+  let fold: CountFold | undefined;
+
+  for (const event of events) {
+    if (event.type === "shoe_started") {
+      fold = {
+        decks: event.decks,
+        totalRemaining: event.decks * CARDS_PER_DECK,
+        acesLeft: event.decks * ACES_PER_DECK,
+        rc: zeroRc(),
+        aceRC: 0,
+      };
+    }
+  }
+
+  if (!fold) {
+    throw new Error("counts info bar requires shoe_started");
+  }
+
+  return present(fold);
 }
