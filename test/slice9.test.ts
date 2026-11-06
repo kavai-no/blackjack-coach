@@ -179,7 +179,6 @@ test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, p
   const { store, calls, shell } = wired();
   const idle = shell.html();
   assert.match(idle, /id="cardsGrid"/);
-  assert.equal(idle.includes("suitGrid"), false);
   assert.deepEqual(
     [...idle.matchAll(/<button type="button" data-rank="([^"]+)">([^<]*)<\/button>/g)].map(
       (match) => [match[1], match[2]],
@@ -318,7 +317,6 @@ test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, p
   assert.ok(json);
   assert.deepEqual(JSON.parse(json), remaining);
   assert.equal(JSON.parse(json).outer_rank_ring.order, "A,2,3,4,5,6,7,8,9,10,J,Q,K");
-  assert.equal(html.includes("suitGrid"), false);
   assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|NEXT HAND|SPLIT|SURRENDER/i.test(html), false);
 });
 
@@ -437,7 +435,6 @@ test("observe-card boundary and shell do not re-derive counts or open a network 
   assert.match(httpSrc, /projectFeltTable\(/);
   assert.match(httpSrc, /projectCountsInfoBar\(/);
   assert.match(httpSrc, /projectRemainingComposition\(/);
-  assert.equal(httpSrc.includes("setSuit("), false);
   assert.equal(httpSrc.includes("splitHand("), false);
   assert.equal(httpSrc.includes("withdrawCard("), false);
   assert.equal(httpSrc.includes("completeHand("), false);
@@ -453,7 +450,6 @@ test("observe-card boundary and shell do not re-derive counts or open a network 
   assert.equal(shellSrc.includes("projectCountsInfoBar"), false);
   assert.equal(shellSrc.includes("projectRemainingComposition"), false);
   assert.equal(shellSrc.includes("setSuit"), false);
-  assert.equal(shellSrc.includes("suitGrid"), false);
   assert.equal(shellSrc.includes("pickSuit"), false);
   assert.equal(shellSrc.includes("runningAce"), false);
   assert.equal(shellSrc.includes("COUNT_MAPS"), false);

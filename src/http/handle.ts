@@ -1,4 +1,4 @@
-import { RANKS, type Rank } from "../counting/maps.ts";
+import { RANKS, SUITS, type Rank, type Suit } from "../counting/maps.ts";
 import { projectCountsInfoBar } from "../read/counts-info-bar.ts";
 import { projectFeltTable } from "../read/felt-table.ts";
 import { projectRemainingComposition } from "../read/remaining-composition.ts";
@@ -8,11 +8,13 @@ import {
   type InMemoryEventStore,
 } from "../write/in-memory-store.ts";
 import { observeCard } from "../write/observe-card.ts";
+import { setSuit } from "../write/set-suit.ts";
 import { startShoe } from "../write/start-shoe.ts";
 
 /** Pages-friendly command/query boundary. No network server. */
 export const START_SHOE_PATH = "/commands/start-shoe";
 export const OBSERVE_CARD_PATH = "/commands/observe-card";
+export const SET_SUIT_PATH = "/commands/set-suit";
 export const FELT_PATH = "/views/felt";
 export const COUNTS_PATH = "/views/counts";
 export const REMAINING_PATH = "/views/remaining";
@@ -29,7 +31,7 @@ export type HttpResponse = {
 };
 
 /**
- * POST start shoe / observe card → `{ ack, events, position }` only.
+ * POST start shoe / observe card / set suit → `{ ack, events, position }` only.
  * GET felt / counts / remaining → the existing projections.
  */
 export function handleHttp(
@@ -58,6 +60,22 @@ export function handleHttp(
       return { status: 400, body: { error: "rank_and_seat_required" } };
     }
     const result = observeCard(store, command);
+    return {
+      status: 200,
+      body: {
+        ack: result.ack,
+        events: result.events,
+        position: result.position,
+      },
+    };
+  }
+
+  if (request.method === "POST" && request.path === SET_SUIT_PATH) {
+    const command = readSetSuit(request.body);
+    if (!command) {
+      return { status: 400, body: { error: "suit_and_seat_required" } };
+    }
+    const result = setSuit(store, command);
     return {
       status: 200,
       body: {
@@ -101,8 +119,22 @@ function readObserveCard(body: unknown): { rank: Rank; seat: Seat } | undefined 
   return { rank, seat };
 }
 
+/** Suit and seat only. Extra fields (rank) are not forwarded. */
+function readSetSuit(body: unknown): { suit: Suit; seat: Seat } | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  if (!("suit" in body) || !("seat" in body)) return undefined;
+  const suit = (body as { suit: unknown }).suit;
+  const seat = (body as { seat: unknown }).seat;
+  if (!isSuit(suit) || !isSeat(seat)) return undefined;
+  return { suit, seat };
+}
+
 function isRank(value: unknown): value is Rank {
   return typeof value === "string" && (RANKS as readonly string[]).includes(value);
+}
+
+function isSuit(value: unknown): value is Suit {
+  return typeof value === "string" && (SUITS as readonly string[]).includes(value);
 }
 
 function isSeat(value: unknown): value is Seat {

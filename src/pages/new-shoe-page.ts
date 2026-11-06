@@ -18,14 +18,13 @@ type PageDocument = {
 };
 
 /**
- * NEW SHOE screen only. The shell also emits the rank pad; this page does not
- * paint it (suit pad and observe stay later slices).
+ * NEW SHOE screen only. The shell also emits the rank pad and the suit pad;
+ * this page does not paint either pad.
  */
 export function presentNewShoeFragment(fragment: string): string {
-  const withoutPads = fragment.replace(
-    /<div id="cardsGrid">[\s\S]*?<\/div>\n?/,
-    "",
-  );
+  const withoutPads = fragment
+    .replace(/<div id="cardsGrid">[\s\S]*?<\/div>\n?/, "")
+    .replace(/<div id="suitGrid">[\s\S]*?<\/div>\n?/, "");
   return withoutPads
     .replace(
       '<button id="shuffleBtn" type="button">NEW SHOE</button>',
