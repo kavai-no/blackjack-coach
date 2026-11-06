@@ -436,7 +436,7 @@ test("observe-card boundary and shell do not re-derive counts or open a network 
   assert.match(httpSrc, /projectFeltTable\(/);
   assert.match(httpSrc, /projectCountsInfoBar\(/);
   assert.match(httpSrc, /projectRemainingComposition\(/);
-  assert.equal(httpSrc.includes("withdrawCard("), false);
+  assert.match(httpSrc, /withdrawCard\(/);
   assert.equal(httpSrc.includes("completeHand("), false);
   assert.equal(httpSrc.includes("runningAce"), false);
   assert.equal(httpSrc.includes("COUNT_MAPS"), false);

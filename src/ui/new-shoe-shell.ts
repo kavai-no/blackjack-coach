@@ -8,6 +8,7 @@ import {
   SET_SUIT_PATH,
   SPLIT_HAND_PATH,
   START_SHOE_PATH,
+  WITHDRAW_CARD_PATH,
   type HttpRequest,
   type HttpResponse,
 } from "../http/handle.ts";
@@ -33,6 +34,10 @@ export type SplitPress =
   | { rejected: true }
   | { rejected: false; post: HttpResponse; html: string };
 
+export type WithdrawPress =
+  | { rejected: true }
+  | { rejected: false; post: HttpResponse; html: string };
+
 export type NewShoeShell = {
   html(): string;
   pressNewShoe():
@@ -44,6 +49,11 @@ export type NewShoeShell = {
   pressSuit(suit: string): SuitPress;
   /** Hero `#splitBtn-1` → Split hand. Seat only. */
   pressSplit(): SplitPress;
+  /**
+   * Backspace → withdraw the last card this shell registered.
+   * Posts rank + seat only. Does not fold counts or scan the stream.
+   */
+  pressWithdraw(): WithdrawPress;
 };
 
 /**
@@ -60,6 +70,8 @@ export function createNewShoeShell(
   let focusSeat: FeltTable["screen"]["focus_seat"] = "1";
   let heroSeat: FeltTable["screen"]["hero_seat"] = "1";
   let splitReady = false;
+  /** Rank + seat posted by this shell, oldest first. Not a count fold. */
+  const registered: { rank: Rank; seat: string }[] = [];
 
   return {
     html() {
@@ -88,6 +100,7 @@ export function createNewShoeShell(
         "remaining",
       );
       shoeLive = true;
+      registered.length = 0;
       focusHasCard = false;
       rememberFelt(felt);
       page = renderNewShoe(felt, counts, remaining);
@@ -97,10 +110,11 @@ export function createNewShoeShell(
     pressRank(rank: string) {
       if (!shoeLive || !isPadRank(rank)) return { rejected: true };
 
+      const seat = focusSeat;
       const post = handle({
         method: "POST",
         path: OBSERVE_CARD_PATH,
-        body: { rank, seat: focusSeat },
+        body: { rank, seat },
       });
       if (post.status !== 200) {
         throw new Error(`observe_card HTTP ${post.status}`);
@@ -116,7 +130,8 @@ export function createNewShoeShell(
         "remaining",
       );
       rememberFelt(felt);
-      focusHasCard = true;
+      registered.push({ rank, seat });
+      focusHasCard = registered.some((card) => card.seat === focusSeat);
       page = renderNewShoe(felt, counts, remaining);
       return { rejected: false, post, html: page };
     },
@@ -172,6 +187,35 @@ export function createNewShoeShell(
       page = renderNewShoe(felt, counts, remaining);
       return { rejected: false, post, html: page };
     },
+
+    pressWithdraw() {
+      const last = registered.at(-1);
+      if (!shoeLive || !last) return { rejected: true };
+
+      const post = handle({
+        method: "POST",
+        path: WITHDRAW_CARD_PATH,
+        body: { rank: last.rank, seat: last.seat },
+      });
+      if (post.status !== 200) {
+        throw new Error(`withdraw_card HTTP ${post.status}`);
+      }
+
+      registered.pop();
+      const felt = view<FeltTable>(handle({ method: "GET", path: FELT_PATH }), "felt");
+      const counts = view<CountsInfoBar>(
+        handle({ method: "GET", path: COUNTS_PATH }),
+        "counts",
+      );
+      const remaining = view<RemainingComposition>(
+        handle({ method: "GET", path: REMAINING_PATH }),
+        "remaining",
+      );
+      rememberFelt(felt);
+      focusHasCard = registered.some((card) => card.seat === focusSeat);
+      page = renderNewShoe(felt, counts, remaining);
+      return { rejected: false, post, html: page };
+    },
   };
 
   function rememberFelt(felt: FeltTable) {
@@ -193,7 +237,7 @@ function view<T extends object>(response: HttpResponse, name: string): T {
 }
 
 function frame(body: string): string {
-  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n${renderRankPad()}\n${renderSuitPad()}\n${body}`;
+  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n${renderRankPad()}\n${renderSuitPad()}\n${renderBackspace()}\n${body}`;
 }
 
 function renderRankPad(): string {
@@ -209,6 +253,11 @@ function renderSuitPad(): string {
     return `<button type="button" class="suit-btn card-btn ${suit}" data-suit="${suit}">${SUIT_SYMBOL[suit]}</button>`;
   }).join("");
   return `<div id="suitGrid">${buttons}</div>`;
+}
+
+/** Original undo key. Not a labeled control and not click-delete of an older card. */
+function renderBackspace(): string {
+  return `<button type="button" id="backspaceBtn" data-key="Backspace">⌫</button>`;
 }
 
 function isPadRank(value: string): value is Rank {
