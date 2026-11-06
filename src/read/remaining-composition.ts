@@ -1,5 +1,5 @@
 import { RANKS, type Rank, type Suit } from "../counting/maps.ts";
-import type { DomainEvent } from "../write/events.ts";
+import { SEATS, type DomainEvent, type Seat } from "../write/events.ts";
 
 /** Donut draw order (HCL inner pie), not `state.js` storage order. */
 const SUIT_DRAW = [
@@ -100,16 +100,19 @@ function fullShoe(decks: number): RemainingComposition {
 /** Remaining composition.
  *  Shoe started fills the shoe. Hand completed leaves it.
  *  Card observed decrements that rank on the outer ring only.
- *  Suit pie and rank×suit stay put until card_suit_set.
+ *  Card suit set moves one unit onto that suit (and that rank×suit).
+ *  A later suit on the same card moves the unit off the previous suit.
  */
 export function projectRemainingComposition(
   events: readonly DomainEvent[],
 ): RemainingComposition {
   let composition: RemainingComposition | undefined;
+  let tracked = emptyTracked();
 
   for (const event of events) {
     if (event.type === "shoe_started") {
       composition = fullShoe(event.decks);
+      tracked = emptyTracked();
     } else if (event.type === "card_observed" && composition) {
       const slice = composition.remaining_by_rank.find(
         (row) => row.rank === event.rank,
@@ -118,6 +121,14 @@ export function projectRemainingComposition(
         throw new Error(`no remaining slice for rank ${event.rank}`);
       }
       slice.count -= 1;
+      tracked[event.seat].push({ rank: event.rank, suit: null });
+    } else if (event.type === "card_suit_set" && composition) {
+      const card = tracked[event.seat].at(-1);
+      if (!card) {
+        throw new Error(`no observed card on seat ${event.seat}`);
+      }
+      moveSuit(composition, card.rank, card.suit, event.suit);
+      card.suit = event.suit;
     }
   }
 
@@ -125,4 +136,40 @@ export function projectRemainingComposition(
     throw new Error("remaining composition requires shoe_started");
   }
   return composition;
+}
+
+type TrackedCard = { rank: Rank; suit: Suit | null };
+
+function emptyTracked(): Record<Seat, TrackedCard[]> {
+  const tracked = {} as Record<Seat, TrackedCard[]>;
+  for (const seat of SEATS) tracked[seat] = [];
+  return tracked;
+}
+
+function moveSuit(
+  composition: RemainingComposition,
+  rank: Rank,
+  from: Suit | null,
+  to: Suit,
+): void {
+  if (from === to) return;
+  if (from) {
+    const previous = suitCell(composition, rank, from);
+    previous.bySuit.count += 1;
+    previous.byRankSuit.count += 1;
+  }
+  const next = suitCell(composition, rank, to);
+  next.bySuit.count -= 1;
+  next.byRankSuit.count -= 1;
+}
+
+function suitCell(composition: RemainingComposition, rank: Rank, suit: Suit) {
+  const bySuit = composition.remaining_by_suit.find((row) => row.suit === suit);
+  const byRankSuit = composition.remaining_by_rank_suit.find(
+    (row) => row.rank === rank && row.suit === suit,
+  );
+  if (!bySuit || !byRankSuit) {
+    throw new Error(`no remaining cell for ${rank} of ${suit}`);
+  }
+  return { bySuit, byRankSuit };
 }

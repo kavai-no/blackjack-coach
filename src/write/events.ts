@@ -1,4 +1,4 @@
-import type { Rank } from "../counting/maps.ts";
+import type { Rank, Suit } from "../counting/maps.ts";
 
 /** Felt order. Dealer is `D`, then seats 7…1. */
 export const SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"] as const;
@@ -22,4 +22,11 @@ export type CardObserved = {
   seat: Seat;
 };
 
-export type DomainEvent = ShoeStarted | HandCompleted | CardObserved;
+/** Suit for the latest observe on a seat. No rank — the seat targets that card. */
+export type CardSuitSet = {
+  type: "card_suit_set";
+  suit: Suit;
+  seat: Seat;
+};
+
+export type DomainEvent = ShoeStarted | HandCompleted | CardObserved | CardSuitSet;
