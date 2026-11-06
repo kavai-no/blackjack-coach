@@ -102,17 +102,20 @@ function fullShoe(decks: number): RemainingComposition {
  *  Card observed decrements that rank on the outer ring only.
  *  Card suit set moves one unit onto that suit (and that rank×suit).
  *  A later suit on the same card moves the unit off the previous suit.
+ *  Card withdrawn restores that rank, and the suit unit only if one was set.
  */
 export function projectRemainingComposition(
   events: readonly DomainEvent[],
 ): RemainingComposition {
   let composition: RemainingComposition | undefined;
   let tracked = emptyTracked();
+  let order: TrackedCard[] = [];
 
   for (const event of events) {
     if (event.type === "shoe_started") {
       composition = fullShoe(event.decks);
       tracked = emptyTracked();
+      order = [];
     } else if (event.type === "card_observed" && composition) {
       const slice = composition.remaining_by_rank.find(
         (row) => row.rank === event.rank,
@@ -121,7 +124,13 @@ export function projectRemainingComposition(
         throw new Error(`no remaining slice for rank ${event.rank}`);
       }
       slice.count -= 1;
-      tracked[event.seat].push({ rank: event.rank, suit: null });
+      const card: TrackedCard = {
+        rank: event.rank,
+        suit: null,
+        seat: event.seat,
+      };
+      tracked[event.seat].push(card);
+      order.push(card);
     } else if (event.type === "card_suit_set" && composition) {
       const card = tracked[event.seat].at(-1);
       if (!card) {
@@ -129,6 +138,34 @@ export function projectRemainingComposition(
       }
       moveSuit(composition, card.rank, card.suit, event.suit);
       card.suit = event.suit;
+    } else if (event.type === "card_withdrawn" && composition) {
+      const card = order.at(-1);
+      if (!card) {
+        throw new Error("card_withdrawn with no registered card");
+      }
+      if (card.rank !== event.rank || card.seat !== event.seat) {
+        throw new Error("card_withdrawn is not the last registered card");
+      }
+      order.pop();
+      const seatCards = tracked[card.seat];
+      const index = seatCards.lastIndexOf(card);
+      if (index < 0) {
+        throw new Error(`no tracked card on seat ${card.seat}`);
+      }
+      seatCards.splice(index, 1);
+
+      const slice = composition.remaining_by_rank.find(
+        (row) => row.rank === card.rank,
+      );
+      if (!slice) {
+        throw new Error(`no remaining slice for rank ${card.rank}`);
+      }
+      slice.count += 1;
+      if (card.suit) {
+        const restored = suitCell(composition, card.rank, card.suit);
+        restored.bySuit.count += 1;
+        restored.byRankSuit.count += 1;
+      }
     }
   }
 
@@ -138,7 +175,7 @@ export function projectRemainingComposition(
   return composition;
 }
 
-type TrackedCard = { rank: Rank; suit: Suit | null };
+type TrackedCard = { rank: Rank; suit: Suit | null; seat: Seat };
 
 function emptyTracked(): Record<Seat, TrackedCard[]> {
   const tracked = {} as Record<Seat, TrackedCard[]>;

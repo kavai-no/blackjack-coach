@@ -132,6 +132,7 @@ function present(fold: CountFold): CountsInfoBar {
  * Counts / info bar.
  * Shoe started resets P/D/RA and running counts.
  * Card observed applies that rank's tags, penetration, and (for an ace) RA + ace side count.
+ * Card withdrawn reverses that observe, including Omega II.
  * Hand completed does not — the shoe persists.
  */
 export function projectCountsInfoBar(
@@ -157,6 +158,15 @@ export function projectCountsInfoBar(
       if (event.rank === "A") {
         fold.acesLeft -= 1;
         fold.aceRC -= 1;
+      }
+    } else if (event.type === "card_withdrawn" && fold) {
+      fold.totalRemaining += 1;
+      for (const system of COUNT_SYSTEMS) {
+        fold.rc[system] -= countTag(system, event.rank);
+      }
+      if (event.rank === "A") {
+        fold.acesLeft += 1;
+        fold.aceRC += 1;
       }
     }
   }
