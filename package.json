@@ -3,10 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types --test test/*.test.ts"
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "build": "node scripts/build-pages.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
+    "esbuild": "^0.28.2",
+    "linkedom": "^0.18.15",
     "typescript": "^5.9.3"
   }
 }
