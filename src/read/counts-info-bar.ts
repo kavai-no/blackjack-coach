@@ -1,4 +1,4 @@
-import { type CountSystem } from "../counting/maps.ts";
+import { COUNT_SYSTEMS, countTag, type CountSystem } from "../counting/maps.ts";
 import { runningAce } from "../counting/running-ace.ts";
 import type { DomainEvent } from "../write/events.ts";
 
@@ -129,7 +129,9 @@ function present(fold: CountFold): CountsInfoBar {
 }
 
 /**
- * Counts / info bar. Shoe started resets P/D/RA and running counts.
+ * Counts / info bar.
+ * Shoe started resets P/D/RA and running counts.
+ * Card observed applies that rank's tags, penetration, and (for an ace) RA + ace side count.
  * Hand completed does not — the shoe persists.
  */
 export function projectCountsInfoBar(
@@ -146,6 +148,16 @@ export function projectCountsInfoBar(
         rc: zeroRc(),
         aceRC: 0,
       };
+    } else if (event.type === "card_observed" && fold) {
+      fold.totalRemaining -= 1;
+      for (const system of COUNT_SYSTEMS) {
+        fold.rc[system] += countTag(system, event.rank);
+      }
+      // Original addCard: seeing an ace decrements the ace side count.
+      if (event.rank === "A") {
+        fold.acesLeft -= 1;
+        fold.aceRC -= 1;
+      }
     }
   }
 

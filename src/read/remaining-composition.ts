@@ -97,7 +97,11 @@ function fullShoe(decks: number): RemainingComposition {
   };
 }
 
-/** Remaining composition. Shoe started fills the shoe; Hand completed leaves it. */
+/** Remaining composition.
+ *  Shoe started fills the shoe. Hand completed leaves it.
+ *  Card observed decrements that rank on the outer ring only.
+ *  Suit pie and rank×suit stay put until card_suit_set.
+ */
 export function projectRemainingComposition(
   events: readonly DomainEvent[],
 ): RemainingComposition {
@@ -106,6 +110,14 @@ export function projectRemainingComposition(
   for (const event of events) {
     if (event.type === "shoe_started") {
       composition = fullShoe(event.decks);
+    } else if (event.type === "card_observed" && composition) {
+      const slice = composition.remaining_by_rank.find(
+        (row) => row.rank === event.rank,
+      );
+      if (!slice) {
+        throw new Error(`no remaining slice for rank ${event.rank}`);
+      }
+      slice.count -= 1;
     }
   }
 
