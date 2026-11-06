@@ -396,7 +396,7 @@ test("GWT Backspace withdraws the last registered card and restores counts and r
   assert.ok(json);
   assert.deepEqual(JSON.parse(json), emptyRemaining);
   assert.equal(
-    /RoR|Wong|21\+3|Perfect Pair|sidebet|NEXT HAND|SURRENDER|Expert/i.test(html),
+    /RoR|Wong|21\+3|Perfect Pair|sidebet|SURRENDER|Expert/i.test(html),
     false,
   );
 
@@ -486,7 +486,7 @@ test("withdraw-card boundary reuses withdrawCard and does not re-derive counts o
   assert.match(httpSrc, /projectFeltTable\(/);
   assert.match(httpSrc, /projectCountsInfoBar\(/);
   assert.match(httpSrc, /projectRemainingComposition\(/);
-  assert.equal(httpSrc.includes("completeHand("), false);
+  assert.match(httpSrc, /completeHand\(/);
   assert.equal(httpSrc.includes("runningAce"), false);
   assert.equal(httpSrc.includes("COUNT_MAPS"), false);
   assert.equal(httpSrc.includes("pickSuit"), false);

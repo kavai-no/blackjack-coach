@@ -112,7 +112,7 @@ test("unknown routes and out-of-slice commands are 404", () => {
   const store = createInMemoryEventStore();
   for (const request of [
     { method: "GET" as const, path: "/commands/observe-card" },
-    { method: "POST" as const, path: "/commands/complete-hand" },
+    { method: "GET" as const, path: "/commands/complete-hand" },
     { method: "GET" as const, path: "/nope" },
     { method: "GET" as const, path: START_SHOE_PATH },
   ]) {
@@ -152,7 +152,7 @@ test("GWT first NEW SHOE paints empty felt, RA −0.875, full 8-deck donut", () 
   assert.equal(idle.includes("-0.875"), false);
   assert.equal(idle.includes("data-seat"), false);
   assert.equal(idle.includes("combinedChart-data"), false);
-  assert.equal(/RoR|Wong|21\+3|sidebet|NEXT HAND|SPLIT/i.test(idle), false);
+  assert.equal(/RoR|Wong|21\+3|sidebet|SPLIT/i.test(idle), false);
 
   const pressed = shell.pressNewShoe();
   assert.equal(pressed.cancelled, false);
@@ -283,7 +283,7 @@ test("GWT first NEW SHOE paints empty felt, RA −0.875, full 8-deck donut", () 
   assert.equal(donut.outer_rank_ring.order, "A,2,3,4,5,6,7,8,9,10,J,Q,K");
   assert.deepEqual(donut.inner_suit_pie.symbols, ["♠", "♣", "♥", "♦"]);
 
-  assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|NEXT HAND|SPLIT|SURRENDER/i.test(html), false);
+  assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|SPLIT|SURRENDER/i.test(html), false);
 });
 
 test("cancelled NEW SHOE does not call the boundary", () => {

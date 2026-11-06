@@ -366,7 +366,7 @@ test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", (
   assert.ok(json);
   assert.deepEqual(JSON.parse(json), remainingBefore);
   assert.equal(
-    /RoR|Wong|21\+3|Perfect Pair|sidebet|NEXT HAND|SURRENDER|Expert|withdraw/i.test(html),
+    /RoR|Wong|21\+3|Perfect Pair|sidebet|SURRENDER|Expert|withdraw/i.test(html),
     false,
   );
 
@@ -487,7 +487,7 @@ test("split-hand boundary reuses splitHand and does not re-derive piles or open 
   assert.match(httpSrc, /projectRemainingComposition\(/);
   assert.equal(httpSrc.includes("split_piles"), false);
   assert.match(httpSrc, /withdrawCard\(/);
-  assert.equal(httpSrc.includes("completeHand("), false);
+  assert.match(httpSrc, /completeHand\(/);
   assert.equal(httpSrc.includes("runningAce"), false);
   assert.equal(httpSrc.includes("COUNT_MAPS"), false);
   assert.equal(httpSrc.includes("pickSuit"), false);

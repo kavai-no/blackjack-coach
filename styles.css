@@ -41,6 +41,7 @@ body {
   max-width: 120px;
 }
 .shuffle { background: #dc2626; color: #fff; }
+.next-hand { background: #22c55e; color: #fff; }
 .btn:active { transform: scale(0.96); }
 .table-container { flex: 1; overflow: hidden; position: relative; min-height: 150px; }
 .table {

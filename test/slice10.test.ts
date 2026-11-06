@@ -17,7 +17,7 @@ const SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"];
 
 /** Parked chrome and later-slice pads. Not part of the NEW SHOE page. */
 const PARKS =
-  /RoR|Wong|21\+3|Perfect Pair|sidebet|NEXT HAND|SPLIT|SURRENDER|suitGrid|cardsGrid|compDep|heatSim|useKelly|Expert/i;
+  /RoR|Wong|21\+3|Perfect Pair|sidebet|SPLIT|SURRENDER|suitGrid|cardsGrid|compDep|heatSim|useKelly|Expert/i;
 
 function readRoot(name: string): string {
   return readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
@@ -185,7 +185,7 @@ test("GWT click #shuffleBtn confirms, then paints the three empty-shoe views", (
   const idle = document.querySelector("#app")?.innerHTML ?? "";
   assert.match(
     idle,
-    /<div class="topbar"><button class="btn shuffle" id="shuffleBtn" type="button">NEW SHOE<\/button><\/div>/,
+    /<div class="topbar"><button class="btn shuffle" id="shuffleBtn" type="button">NEW SHOE<\/button><button class="btn next-hand" id="nextHandBtn" type="button">NEXT HAND<\/button><\/div>/,
   );
   assert.equal(idle.includes("-0.875"), false);
   assert.equal(idle.includes("data-seat"), false);
@@ -207,7 +207,7 @@ test("GWT click #shuffleBtn confirms, then paints the three empty-shoe views", (
   assertEmptyShoe(html);
   assert.match(
     html,
-    /<div class="topbar"><button class="btn shuffle" id="shuffleBtn" type="button">NEW SHOE<\/button><\/div>/,
+    /<div class="topbar"><button class="btn shuffle" id="shuffleBtn" type="button">NEW SHOE<\/button><button class="btn next-hand" id="nextHandBtn" type="button">NEXT HAND<\/button><\/div>/,
   );
 });
 

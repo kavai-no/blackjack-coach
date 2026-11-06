@@ -18,7 +18,7 @@ type PageDocument = {
 };
 
 /**
- * NEW SHOE screen only. The shell also emits the rank pad and the suit pad;
+ * NEW SHOE / NEXT HAND screen. The shell also emits the rank pad and the suit pad;
  * this page does not paint either pad.
  */
 export function presentNewShoeFragment(fragment: string): string {
@@ -27,8 +27,8 @@ export function presentNewShoeFragment(fragment: string): string {
     .replace(/<div id="suitGrid">[\s\S]*?<\/div>\n?/, "");
   return withoutPads
     .replace(
-      '<button id="shuffleBtn" type="button">NEW SHOE</button>',
-      '<div class="topbar"><button class="btn shuffle" id="shuffleBtn" type="button">NEW SHOE</button></div>',
+      '<button id="shuffleBtn" type="button">NEW SHOE</button>\n<button id="nextHandBtn" type="button">NEXT HAND</button>',
+      '<div class="topbar"><button class="btn shuffle" id="shuffleBtn" type="button">NEW SHOE</button><button class="btn next-hand" id="nextHandBtn" type="button">NEXT HAND</button></div>',
     )
     .replace(
       '<div id="table">',
@@ -61,6 +61,10 @@ export function mountNewShoePage(document: PageDocument, confirm: Confirm): void
     root.querySelector("#shuffleBtn")?.addEventListener("click", () => {
       const result = shell.pressNewShoe();
       if (!result.cancelled) paint();
+    });
+    root.querySelector("#nextHandBtn")?.addEventListener("click", () => {
+      const result = shell.pressNextHand();
+      if (!result.rejected) paint();
     });
   };
 

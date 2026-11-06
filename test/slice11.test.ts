@@ -321,7 +321,7 @@ test("GWT suit pad: press hearts on the last focus card paints the mini face and
   assert.ok(json);
   assert.deepEqual(JSON.parse(json), remaining);
   assert.equal(JSON.parse(json).outer_rank_ring.order, "A,2,3,4,5,6,7,8,9,10,J,Q,K");
-  assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|NEXT HAND|SPLIT|SURRENDER|Expert/i.test(html), false);
+  assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|SPLIT|SURRENDER|Expert/i.test(html), false);
 
   calls.length = 0;
   const corrected = shell.pressSuit("diamonds");
