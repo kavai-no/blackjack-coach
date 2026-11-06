@@ -29,4 +29,15 @@ export type CardSuitSet = {
   seat: Seat;
 };
 
-export type DomainEvent = ShoeStarted | HandCompleted | CardObserved | CardSuitSet;
+/** Hero seat split into piles A and B. Counts and remaining do not change. */
+export type HandSplit = {
+  type: "hand_split";
+  seat: Seat;
+};
+
+export type DomainEvent =
+  | ShoeStarted
+  | HandCompleted
+  | CardObserved
+  | CardSuitSet
+  | HandSplit;
