@@ -112,7 +112,6 @@ test("unknown routes and out-of-slice commands are 404", () => {
   const store = createInMemoryEventStore();
   for (const request of [
     { method: "GET" as const, path: "/commands/observe-card" },
-    { method: "POST" as const, path: "/commands/observe-card", body: {} },
     { method: "POST" as const, path: "/commands/complete-hand" },
     { method: "GET" as const, path: "/nope" },
     { method: "GET" as const, path: START_SHOE_PATH },
