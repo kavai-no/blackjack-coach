@@ -1,9 +1,11 @@
-import { RANKS, type Rank } from "../counting/maps.ts";
+import { RANKS, SUITS, type Rank, type Suit } from "../counting/maps.ts";
+import { SUIT_SYMBOL } from "../felt/mini-card-face.ts";
 import {
   COUNTS_PATH,
   FELT_PATH,
   OBSERVE_CARD_PATH,
   REMAINING_PATH,
+  SET_SUIT_PATH,
   START_SHOE_PATH,
   type HttpRequest,
   type HttpResponse,
@@ -22,6 +24,10 @@ export type RankPress =
   | { rejected: true }
   | { rejected: false; post: HttpResponse; html: string };
 
+export type SuitPress =
+  | { rejected: true }
+  | { rejected: false; post: HttpResponse; html: string };
+
 export type NewShoeShell = {
   html(): string;
   pressNewShoe():
@@ -29,6 +35,8 @@ export type NewShoeShell = {
     | { cancelled: false; post: HttpResponse; html: string };
   /** Rank pad → Observe card on the focus seat. Suit is not sent. */
   pressRank(rank: string): RankPress;
+  /** Suit pad → Set suit on the last observe of the focus seat. */
+  pressSuit(suit: string): SuitPress;
 };
 
 /**
@@ -41,6 +49,7 @@ export function createNewShoeShell(
 ): NewShoeShell {
   let page = renderIdle();
   let shoeLive = false;
+  let focusHasCard = false;
   let focusSeat: FeltTable["screen"]["focus_seat"] = "1";
 
   return {
@@ -70,6 +79,7 @@ export function createNewShoeShell(
         "remaining",
       );
       shoeLive = true;
+      focusHasCard = false;
       focusSeat = felt.screen.focus_seat;
       page = renderNewShoe(felt, counts, remaining);
       return { cancelled: false, post, html: page };
@@ -85,6 +95,33 @@ export function createNewShoeShell(
       });
       if (post.status !== 200) {
         throw new Error(`observe_card HTTP ${post.status}`);
+      }
+
+      const felt = view<FeltTable>(handle({ method: "GET", path: FELT_PATH }), "felt");
+      const counts = view<CountsInfoBar>(
+        handle({ method: "GET", path: COUNTS_PATH }),
+        "counts",
+      );
+      const remaining = view<RemainingComposition>(
+        handle({ method: "GET", path: REMAINING_PATH }),
+        "remaining",
+      );
+      focusSeat = felt.screen.focus_seat;
+      focusHasCard = true;
+      page = renderNewShoe(felt, counts, remaining);
+      return { rejected: false, post, html: page };
+    },
+
+    pressSuit(suit: string) {
+      if (!shoeLive || !focusHasCard || !isPadSuit(suit)) return { rejected: true };
+
+      const post = handle({
+        method: "POST",
+        path: SET_SUIT_PATH,
+        body: { suit, seat: focusSeat },
+      });
+      if (post.status !== 200) {
+        throw new Error(`set_suit HTTP ${post.status}`);
       }
 
       const felt = view<FeltTable>(handle({ method: "GET", path: FELT_PATH }), "felt");
@@ -115,7 +152,7 @@ function view<T extends object>(response: HttpResponse, name: string): T {
 }
 
 function frame(body: string): string {
-  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n${renderRankPad()}\n${body}`;
+  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n${renderRankPad()}\n${renderSuitPad()}\n${body}`;
 }
 
 function renderRankPad(): string {
@@ -125,8 +162,20 @@ function renderRankPad(): string {
   return `<div id="cardsGrid">${buttons}</div>`;
 }
 
+/** Original build order is `[...suits].reverse()`: clubs, diamonds, hearts, spades. */
+function renderSuitPad(): string {
+  const buttons = [...SUITS].reverse().map((suit) => {
+    return `<button type="button" class="suit-btn card-btn ${suit}" data-suit="${suit}">${SUIT_SYMBOL[suit]}</button>`;
+  }).join("");
+  return `<div id="suitGrid">${buttons}</div>`;
+}
+
 function isPadRank(value: string): value is Rank {
   return (RANKS as readonly string[]).includes(value);
+}
+
+function isPadSuit(value: string): value is Suit {
+  return (SUITS as readonly string[]).includes(value);
 }
 
 function renderIdle(): string {
