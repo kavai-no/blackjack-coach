@@ -1,14 +1,18 @@
+import { RANKS, type Rank } from "../counting/maps.ts";
 import { projectCountsInfoBar } from "../read/counts-info-bar.ts";
 import { projectFeltTable } from "../read/felt-table.ts";
 import { projectRemainingComposition } from "../read/remaining-composition.ts";
+import { SEATS, type Seat } from "../write/events.ts";
 import {
   TABLE_STREAM,
   type InMemoryEventStore,
 } from "../write/in-memory-store.ts";
+import { observeCard } from "../write/observe-card.ts";
 import { startShoe } from "../write/start-shoe.ts";
 
 /** Pages-friendly command/query boundary. No network server. */
 export const START_SHOE_PATH = "/commands/start-shoe";
+export const OBSERVE_CARD_PATH = "/commands/observe-card";
 export const FELT_PATH = "/views/felt";
 export const COUNTS_PATH = "/views/counts";
 export const REMAINING_PATH = "/views/remaining";
@@ -25,7 +29,7 @@ export type HttpResponse = {
 };
 
 /**
- * POST start shoe → `{ ack, events, position }` only.
+ * POST start shoe / observe card → `{ ack, events, position }` only.
  * GET felt / counts / remaining → the existing projections.
  */
 export function handleHttp(
@@ -38,6 +42,22 @@ export function handleHttp(
       return { status: 400, body: { error: "decks_required" } };
     }
     const result = startShoe(store, { decks });
+    return {
+      status: 200,
+      body: {
+        ack: result.ack,
+        events: result.events,
+        position: result.position,
+      },
+    };
+  }
+
+  if (request.method === "POST" && request.path === OBSERVE_CARD_PATH) {
+    const command = readObserveCard(request.body);
+    if (!command) {
+      return { status: 400, body: { error: "rank_and_seat_required" } };
+    }
+    const result = observeCard(store, command);
     return {
       status: 200,
       body: {
@@ -69,4 +89,22 @@ function readDecks(body: unknown): number | undefined {
   const decks = (body as { decks: unknown }).decks;
   if (typeof decks !== "number") return undefined;
   return decks;
+}
+
+/** Rank and seat only. Extra fields (suit) are not forwarded. */
+function readObserveCard(body: unknown): { rank: Rank; seat: Seat } | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  if (!("rank" in body) || !("seat" in body)) return undefined;
+  const rank = (body as { rank: unknown }).rank;
+  const seat = (body as { seat: unknown }).seat;
+  if (!isRank(rank) || !isSeat(seat)) return undefined;
+  return { rank, seat };
+}
+
+function isRank(value: unknown): value is Rank {
+  return typeof value === "string" && (RANKS as readonly string[]).includes(value);
+}
+
+function isSeat(value: unknown): value is Seat {
+  return typeof value === "string" && (SEATS as readonly string[]).includes(value);
 }

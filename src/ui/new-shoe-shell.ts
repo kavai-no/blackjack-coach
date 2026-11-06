@@ -1,6 +1,8 @@
+import { RANKS, type Rank } from "../counting/maps.ts";
 import {
   COUNTS_PATH,
   FELT_PATH,
+  OBSERVE_CARD_PATH,
   REMAINING_PATH,
   START_SHOE_PATH,
   type HttpRequest,
@@ -16,11 +18,17 @@ import type { RemainingComposition } from "../read/remaining-composition.ts";
 /** Original `#shuffleBtn` confirm before a fresh 8-deck shoe. */
 export const NEW_SHOE_CONFIRM = "Start fresh 8-deck shoe?";
 
+export type RankPress =
+  | { rejected: true }
+  | { rejected: false; post: HttpResponse; html: string };
+
 export type NewShoeShell = {
   html(): string;
   pressNewShoe():
     | { cancelled: true }
     | { cancelled: false; post: HttpResponse; html: string };
+  /** Rank pad → Observe card on the focus seat. Suit is not sent. */
+  pressRank(rank: string): RankPress;
 };
 
 /**
@@ -32,6 +40,8 @@ export function createNewShoeShell(
   confirm: (message: string) => boolean = () => true,
 ): NewShoeShell {
   let page = renderIdle();
+  let shoeLive = false;
+  let focusSeat: FeltTable["screen"]["focus_seat"] = "1";
 
   return {
     html() {
@@ -59,8 +69,36 @@ export function createNewShoeShell(
         handle({ method: "GET", path: REMAINING_PATH }),
         "remaining",
       );
+      shoeLive = true;
+      focusSeat = felt.screen.focus_seat;
       page = renderNewShoe(felt, counts, remaining);
       return { cancelled: false, post, html: page };
+    },
+
+    pressRank(rank: string) {
+      if (!shoeLive || !isPadRank(rank)) return { rejected: true };
+
+      const post = handle({
+        method: "POST",
+        path: OBSERVE_CARD_PATH,
+        body: { rank, seat: focusSeat },
+      });
+      if (post.status !== 200) {
+        throw new Error(`observe_card HTTP ${post.status}`);
+      }
+
+      const felt = view<FeltTable>(handle({ method: "GET", path: FELT_PATH }), "felt");
+      const counts = view<CountsInfoBar>(
+        handle({ method: "GET", path: COUNTS_PATH }),
+        "counts",
+      );
+      const remaining = view<RemainingComposition>(
+        handle({ method: "GET", path: REMAINING_PATH }),
+        "remaining",
+      );
+      focusSeat = felt.screen.focus_seat;
+      page = renderNewShoe(felt, counts, remaining);
+      return { rejected: false, post, html: page };
     },
   };
 }
@@ -77,7 +115,18 @@ function view<T extends object>(response: HttpResponse, name: string): T {
 }
 
 function frame(body: string): string {
-  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n${body}`;
+  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n${renderRankPad()}\n${body}`;
+}
+
+function renderRankPad(): string {
+  const buttons = RANKS.map(
+    (rank) => `<button type="button" data-rank="${rank}">${rank}</button>`,
+  ).join("");
+  return `<div id="cardsGrid">${buttons}</div>`;
+}
+
+function isPadRank(value: string): value is Rank {
+  return (RANKS as readonly string[]).includes(value);
 }
 
 function renderIdle(): string {
@@ -104,12 +153,7 @@ function renderSeat(
   const classes = ["seat-round"];
   if (pile.seat === felt.screen.focus_seat) classes.push("active");
   if (pile.seat === felt.screen.hero_seat) classes.push("your-seat");
-  const cards = pile.cards
-    .map((card) => {
-      const face = "mini_card_face" in card ? card.mini_card_face.face : card.rank;
-      return `<div class="mini">${face}</div>`;
-    })
-    .join("");
+  const cards = pile.cards.map((card) => renderCard(card)).join("");
   const totals = felt.hand_totals
     .filter((total) => total.seat === pile.seat && total.hand === undefined)
     .map(
@@ -118,6 +162,14 @@ function renderSeat(
     )
     .join("");
   return `<section class="seat" data-seat="${pile.seat}"><div class="${classes.join(" ")}">${pile.seat}</div>${totals}<div class="hand" id="hand-${pile.seat}">${cards}</div></section>`;
+}
+
+/** Observed rank only. Suit stays unset — no suit symbol, no mini face. */
+function renderCard(card: FeltTable["seat_piles"][number]["cards"][number]): string {
+  if (card.suit === null) {
+    return `<div class="mini rank-only" data-rank="${card.rank}" data-suit="">${card.rank}</div>`;
+  }
+  return `<div class="mini" data-rank="${card.rank}" data-suit="${card.suit}">${card.mini_card_face.face}</div>`;
 }
 
 function renderInfo(counts: CountsInfoBar): string {
