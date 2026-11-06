@@ -35,9 +35,21 @@ export type HandSplit = {
   seat: Seat;
 };
 
+/**
+ * Last registered card removed.
+ * Rank and seat are those recorded on that observe.
+ * Suit is not stored — projectors restore a suit only when one was set.
+ */
+export type CardWithdrawn = {
+  type: "card_withdrawn";
+  rank: Rank;
+  seat: Seat;
+};
+
 export type DomainEvent =
   | ShoeStarted
   | HandCompleted
   | CardObserved
   | CardSuitSet
-  | HandSplit;
+  | HandSplit
+  | CardWithdrawn;

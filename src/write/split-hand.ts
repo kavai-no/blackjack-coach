@@ -57,6 +57,11 @@ function assertCanSplit(history: readonly DomainEvent[], seat: Seat): void {
       ranks.length = 0;
     } else if (event.type === "card_observed" && event.seat === seat) {
       ranks.push(event.rank);
+    } else if (event.type === "card_withdrawn" && event.seat === seat) {
+      const removed = ranks.pop();
+      if (removed !== event.rank) {
+        throw new Error("card_withdrawn is not the last registered card");
+      }
     } else if (event.type === "hand_split" && event.seat === seat) {
       split = true;
       ranks.length = 0;

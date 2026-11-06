@@ -149,16 +149,21 @@ function heroPairVisible(table: FeltTable): boolean {
  * Card observed appends rank on that seat; suit stays unset.
  * Card suit set paints the latest card on that seat (rank + suit face).
  * Hand split moves that pair into split piles A (first card) and B (second).
+ * Card withdrawn removes the last registered card from its seat pile,
+ * or from the split pile that card moved into.
  */
 export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
   let seenShoe = false;
   let table: FeltTable | undefined;
+  const live: LiveCard[] = [];
 
   for (const event of events) {
     if (event.type === "shoe_started") {
       seenShoe = true;
+      live.length = 0;
       table = emptyFelt();
     } else if (event.type === "hand_completed" && seenShoe) {
+      live.length = 0;
       table = emptyFelt();
     } else if (event.type === "card_observed" && table) {
       const pile = table.seat_piles.find((seat) => seat.seat === event.seat);
@@ -166,6 +171,7 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
         throw new Error(`no felt pile for seat ${event.seat}`);
       }
       pile.cards.push({ rank: event.rank, suit: null });
+      live.push({ seat: event.seat, pile: "main" });
     } else if (event.type === "card_suit_set" && table) {
       const pile = table.seat_piles.find((seat) => seat.seat === event.seat);
       if (!pile) {
@@ -200,6 +206,27 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
         { seat: event.seat, hand: "A", cards: [first] },
         { seat: event.seat, hand: "B", cards: [second] },
       ];
+      const pending = live.filter(
+        (card) => card.seat === event.seat && card.pile === "main",
+      );
+      const [left, right] = pending;
+      if (pending.length !== 2 || left === undefined || right === undefined) {
+        throw new Error(`hand_split on seat ${event.seat} lost its cards`);
+      }
+      left.pile = "A";
+      right.pile = "B";
+    } else if (event.type === "card_withdrawn" && table) {
+      const last = live.at(-1);
+      if (!last) {
+        throw new Error("card_withdrawn with no registered card");
+      }
+      const cards = cardsFor(table, last);
+      const card = cards.at(-1);
+      if (last.seat !== event.seat || !card || card.rank !== event.rank) {
+        throw new Error("card_withdrawn is not the last registered card");
+      }
+      cards.pop();
+      live.pop();
     }
   }
 
@@ -207,4 +234,23 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
     throw new Error("felt table requires shoe_started");
   }
   return withHandTotals(table);
+}
+
+type LiveCard = { seat: FeltSeat; pile: "main" | "A" | "B" };
+
+function cardsFor(table: FeltTable, live: LiveCard): FeltCard[] {
+  if (live.pile === "main") {
+    const pile = table.seat_piles.find((seat) => seat.seat === live.seat);
+    if (!pile) {
+      throw new Error(`no felt pile for seat ${live.seat}`);
+    }
+    return pile.cards;
+  }
+  const split = table.split_piles.find(
+    (pile) => pile.seat === live.seat && pile.hand === live.pile,
+  );
+  if (!split) {
+    throw new Error(`no split pile ${live.pile} for seat ${live.seat}`);
+  }
+  return split.cards;
 }
