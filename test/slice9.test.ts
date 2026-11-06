@@ -432,10 +432,10 @@ test("observe-card boundary and shell do not re-derive counts or open a network 
     "utf8",
   );
   assert.match(httpSrc, /observeCard\(/);
+  assert.match(httpSrc, /splitHand\(/);
   assert.match(httpSrc, /projectFeltTable\(/);
   assert.match(httpSrc, /projectCountsInfoBar\(/);
   assert.match(httpSrc, /projectRemainingComposition\(/);
-  assert.equal(httpSrc.includes("splitHand("), false);
   assert.equal(httpSrc.includes("withdrawCard("), false);
   assert.equal(httpSrc.includes("completeHand("), false);
   assert.equal(httpSrc.includes("runningAce"), false);

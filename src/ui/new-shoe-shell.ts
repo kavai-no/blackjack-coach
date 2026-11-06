@@ -6,6 +6,7 @@ import {
   OBSERVE_CARD_PATH,
   REMAINING_PATH,
   SET_SUIT_PATH,
+  SPLIT_HAND_PATH,
   START_SHOE_PATH,
   type HttpRequest,
   type HttpResponse,
@@ -28,6 +29,10 @@ export type SuitPress =
   | { rejected: true }
   | { rejected: false; post: HttpResponse; html: string };
 
+export type SplitPress =
+  | { rejected: true }
+  | { rejected: false; post: HttpResponse; html: string };
+
 export type NewShoeShell = {
   html(): string;
   pressNewShoe():
@@ -37,6 +42,8 @@ export type NewShoeShell = {
   pressRank(rank: string): RankPress;
   /** Suit pad → Set suit on the last observe of the focus seat. */
   pressSuit(suit: string): SuitPress;
+  /** Hero `#splitBtn-1` → Split hand. Seat only. */
+  pressSplit(): SplitPress;
 };
 
 /**
@@ -51,6 +58,8 @@ export function createNewShoeShell(
   let shoeLive = false;
   let focusHasCard = false;
   let focusSeat: FeltTable["screen"]["focus_seat"] = "1";
+  let heroSeat: FeltTable["screen"]["hero_seat"] = "1";
+  let splitReady = false;
 
   return {
     html() {
@@ -80,7 +89,7 @@ export function createNewShoeShell(
       );
       shoeLive = true;
       focusHasCard = false;
-      focusSeat = felt.screen.focus_seat;
+      rememberFelt(felt);
       page = renderNewShoe(felt, counts, remaining);
       return { cancelled: false, post, html: page };
     },
@@ -106,7 +115,7 @@ export function createNewShoeShell(
         handle({ method: "GET", path: REMAINING_PATH }),
         "remaining",
       );
-      focusSeat = felt.screen.focus_seat;
+      rememberFelt(felt);
       focusHasCard = true;
       page = renderNewShoe(felt, counts, remaining);
       return { rejected: false, post, html: page };
@@ -133,11 +142,43 @@ export function createNewShoeShell(
         handle({ method: "GET", path: REMAINING_PATH }),
         "remaining",
       );
-      focusSeat = felt.screen.focus_seat;
+      rememberFelt(felt);
+      page = renderNewShoe(felt, counts, remaining);
+      return { rejected: false, post, html: page };
+    },
+
+    pressSplit() {
+      if (!shoeLive || !splitReady) return { rejected: true };
+
+      const post = handle({
+        method: "POST",
+        path: SPLIT_HAND_PATH,
+        body: { seat: heroSeat },
+      });
+      if (post.status !== 200) {
+        throw new Error(`split_hand HTTP ${post.status}`);
+      }
+
+      const felt = view<FeltTable>(handle({ method: "GET", path: FELT_PATH }), "felt");
+      const counts = view<CountsInfoBar>(
+        handle({ method: "GET", path: COUNTS_PATH }),
+        "counts",
+      );
+      const remaining = view<RemainingComposition>(
+        handle({ method: "GET", path: REMAINING_PATH }),
+        "remaining",
+      );
+      rememberFelt(felt);
       page = renderNewShoe(felt, counts, remaining);
       return { rejected: false, post, html: page };
     },
   };
+
+  function rememberFelt(felt: FeltTable) {
+    focusSeat = felt.screen.focus_seat;
+    heroSeat = felt.screen.hero_seat;
+    splitReady = felt.screen.split_button_visible;
+  }
 }
 
 function view<T extends object>(response: HttpResponse, name: string): T {
@@ -202,15 +243,51 @@ function renderSeat(
   const classes = ["seat-round"];
   if (pile.seat === felt.screen.focus_seat) classes.push("active");
   if (pile.seat === felt.screen.hero_seat) classes.push("your-seat");
-  const cards = pile.cards.map((card) => renderCard(card)).join("");
-  const totals = felt.hand_totals
-    .filter((total) => total.seat === pile.seat && total.hand === undefined)
-    .map(
-      (total) =>
-        `<div class="hand-total" style="color:${total.colour}">${total.label}</div>`,
-    )
+  const split = felt.split_piles.filter((item) => item.seat === pile.seat);
+  const cards = split.length === 0 ? pile.cards.map((card) => renderCard(card)).join("") : "";
+  const totals =
+    split.length === 0
+      ? felt.hand_totals
+          .filter((total) => total.seat === pile.seat && total.hand === undefined)
+          .map(
+            (total) =>
+              `<div class="hand-total" style="color:${total.colour}">${total.label}</div>`,
+          )
+          .join("")
+      : "";
+  const hidden = split.length > 0 ? ` style="display:none"` : "";
+  return `<section class="seat" data-seat="${pile.seat}"><div class="${classes.join(" ")}">${pile.seat}</div>${totals}<div class="hand" id="hand-${pile.seat}"${hidden}>${cards}</div>${renderSplit(felt, pile.seat, split)}${renderSplitButton(felt, pile.seat)}</section>`;
+}
+
+function renderSplit(
+  felt: FeltTable,
+  seat: FeltTable["seat_piles"][number]["seat"],
+  piles: FeltTable["split_piles"],
+): string {
+  if (piles.length === 0) return "";
+  const hands = piles
+    .map((pile) => {
+      const cards = pile.cards.map((card) => renderCard(card)).join("");
+      const totals = felt.hand_totals
+        .filter((total) => total.seat === seat && total.hand === pile.hand)
+        .map(
+          (total) =>
+            `<div class="hand-total" style="color:${total.colour}">${total.label}</div>`,
+        )
+        .join("");
+      return `<div class="split-hand"><div class="split-label">${pile.hand}</div>${totals}<div class="hand" id="hand-${seat}${pile.hand}">${cards}</div></div>`;
+    })
     .join("");
-  return `<section class="seat" data-seat="${pile.seat}"><div class="${classes.join(" ")}">${pile.seat}</div>${totals}<div class="hand" id="hand-${pile.seat}">${cards}</div></section>`;
+  return `<div class="split-container" id="split-${seat}" style="display:flex">${hands}</div>`;
+}
+
+/** Original `.split-btn#splitBtn-<seat>`. Omitted unless the felt says it is visible on the hero. */
+function renderSplitButton(
+  felt: FeltTable,
+  seat: FeltTable["seat_piles"][number]["seat"],
+): string {
+  if (!felt.screen.split_button_visible || seat !== felt.screen.hero_seat) return "";
+  return `<button class="split-btn" id="splitBtn-${seat}" type="button">SPLIT</button>`;
 }
 
 /** Observed rank only. Suit stays unset — no suit symbol, no mini face. */

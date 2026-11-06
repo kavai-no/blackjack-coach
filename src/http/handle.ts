@@ -9,12 +9,14 @@ import {
 } from "../write/in-memory-store.ts";
 import { observeCard } from "../write/observe-card.ts";
 import { setSuit } from "../write/set-suit.ts";
+import { splitHand } from "../write/split-hand.ts";
 import { startShoe } from "../write/start-shoe.ts";
 
 /** Pages-friendly command/query boundary. No network server. */
 export const START_SHOE_PATH = "/commands/start-shoe";
 export const OBSERVE_CARD_PATH = "/commands/observe-card";
 export const SET_SUIT_PATH = "/commands/set-suit";
+export const SPLIT_HAND_PATH = "/commands/split-hand";
 export const FELT_PATH = "/views/felt";
 export const COUNTS_PATH = "/views/counts";
 export const REMAINING_PATH = "/views/remaining";
@@ -31,7 +33,7 @@ export type HttpResponse = {
 };
 
 /**
- * POST start shoe / observe card / set suit → `{ ack, events, position }` only.
+ * POST start shoe / observe card / set suit / split hand → `{ ack, events, position }` only.
  * GET felt / counts / remaining → the existing projections.
  */
 export function handleHttp(
@@ -86,6 +88,22 @@ export function handleHttp(
     };
   }
 
+  if (request.method === "POST" && request.path === SPLIT_HAND_PATH) {
+    const command = readSplitHand(request.body);
+    if (!command) {
+      return { status: 400, body: { error: "seat_required" } };
+    }
+    const result = splitHand(store, command);
+    return {
+      status: 200,
+      body: {
+        ack: result.ack,
+        events: result.events,
+        position: result.position,
+      },
+    };
+  }
+
   const events = store.read(TABLE_STREAM);
   if (request.method === "GET" && request.path === FELT_PATH) {
     return { status: 200, body: projectFeltTable(events) };
@@ -127,6 +145,15 @@ function readSetSuit(body: unknown): { suit: Suit; seat: Seat } | undefined {
   const seat = (body as { seat: unknown }).seat;
   if (!isSuit(suit) || !isSeat(seat)) return undefined;
   return { suit, seat };
+}
+
+/** Seat only. Extra fields (rank, hand) are not forwarded. */
+function readSplitHand(body: unknown): { seat: Seat } | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  if (!("seat" in body)) return undefined;
+  const seat = (body as { seat: unknown }).seat;
+  if (!isSeat(seat)) return undefined;
+  return { seat };
 }
 
 function isRank(value: unknown): value is Rank {
