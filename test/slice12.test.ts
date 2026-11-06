@@ -486,7 +486,7 @@ test("split-hand boundary reuses splitHand and does not re-derive piles or open 
   assert.match(httpSrc, /projectCountsInfoBar\(/);
   assert.match(httpSrc, /projectRemainingComposition\(/);
   assert.equal(httpSrc.includes("split_piles"), false);
-  assert.equal(httpSrc.includes("withdrawCard("), false);
+  assert.match(httpSrc, /withdrawCard\(/);
   assert.equal(httpSrc.includes("completeHand("), false);
   assert.equal(httpSrc.includes("runningAce"), false);
   assert.equal(httpSrc.includes("COUNT_MAPS"), false);

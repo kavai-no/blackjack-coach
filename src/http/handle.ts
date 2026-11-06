@@ -11,12 +11,14 @@ import { observeCard } from "../write/observe-card.ts";
 import { setSuit } from "../write/set-suit.ts";
 import { splitHand } from "../write/split-hand.ts";
 import { startShoe } from "../write/start-shoe.ts";
+import { withdrawCard } from "../write/withdraw-card.ts";
 
 /** Pages-friendly command/query boundary. No network server. */
 export const START_SHOE_PATH = "/commands/start-shoe";
 export const OBSERVE_CARD_PATH = "/commands/observe-card";
 export const SET_SUIT_PATH = "/commands/set-suit";
 export const SPLIT_HAND_PATH = "/commands/split-hand";
+export const WITHDRAW_CARD_PATH = "/commands/withdraw-card";
 export const FELT_PATH = "/views/felt";
 export const COUNTS_PATH = "/views/counts";
 export const REMAINING_PATH = "/views/remaining";
@@ -33,7 +35,8 @@ export type HttpResponse = {
 };
 
 /**
- * POST start shoe / observe card / set suit / split hand → `{ ack, events, position }` only.
+ * POST start shoe / observe card / set suit / split hand / withdraw card
+ * → `{ ack, events, position }` only.
  * GET felt / counts / remaining → the existing projections.
  */
 export function handleHttp(
@@ -102,6 +105,33 @@ export function handleHttp(
         position: result.position,
       },
     };
+  }
+
+  if (request.method === "POST" && request.path === WITHDRAW_CARD_PATH) {
+    const command = readObserveCard(request.body);
+    if (!command) {
+      return { status: 400, body: { error: "rank_and_seat_required" } };
+    }
+    try {
+      const result = withdrawCard(store, command);
+      return {
+        status: 200,
+        body: {
+          ack: result.ack,
+          events: result.events,
+          position: result.position,
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (
+        message.includes("requires a registered card") ||
+        message.includes("targets the last registered card")
+      ) {
+        return { status: 400, body: { error: "not_last_registered" } };
+      }
+      throw error;
+    }
   }
 
   const events = store.read(TABLE_STREAM);
