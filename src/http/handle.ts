@@ -7,6 +7,7 @@ import {
   TABLE_STREAM,
   type InMemoryEventStore,
 } from "../write/in-memory-store.ts";
+import { completeHand } from "../write/complete-hand.ts";
 import { observeCard } from "../write/observe-card.ts";
 import { setSuit } from "../write/set-suit.ts";
 import { splitHand } from "../write/split-hand.ts";
@@ -19,6 +20,7 @@ export const OBSERVE_CARD_PATH = "/commands/observe-card";
 export const SET_SUIT_PATH = "/commands/set-suit";
 export const SPLIT_HAND_PATH = "/commands/split-hand";
 export const WITHDRAW_CARD_PATH = "/commands/withdraw-card";
+export const COMPLETE_HAND_PATH = "/commands/complete-hand";
 export const FELT_PATH = "/views/felt";
 export const COUNTS_PATH = "/views/counts";
 export const REMAINING_PATH = "/views/remaining";
@@ -35,8 +37,8 @@ export type HttpResponse = {
 };
 
 /**
- * POST start shoe / observe card / set suit / split hand / withdraw card
- * → `{ ack, events, position }` only.
+ * POST start shoe / observe card / set suit / split hand / withdraw card /
+ * complete hand → `{ ack, events, position }` only.
  * GET felt / counts / remaining → the existing projections.
  */
 export function handleHttp(
@@ -132,6 +134,18 @@ export function handleHttp(
       }
       throw error;
     }
+  }
+
+  if (request.method === "POST" && request.path === COMPLETE_HAND_PATH) {
+    const result = completeHand(store);
+    return {
+      status: 200,
+      body: {
+        ack: result.ack,
+        events: result.events,
+        position: result.position,
+      },
+    };
   }
 
   const events = store.read(TABLE_STREAM);

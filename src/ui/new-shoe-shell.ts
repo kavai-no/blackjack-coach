@@ -9,6 +9,7 @@ import {
   SPLIT_HAND_PATH,
   START_SHOE_PATH,
   WITHDRAW_CARD_PATH,
+  COMPLETE_HAND_PATH,
   type HttpRequest,
   type HttpResponse,
 } from "../http/handle.ts";
@@ -38,6 +39,10 @@ export type WithdrawPress =
   | { rejected: true }
   | { rejected: false; post: HttpResponse; html: string };
 
+export type NextHandPress =
+  | { rejected: true }
+  | { rejected: false; post: HttpResponse; html: string };
+
 export type NewShoeShell = {
   html(): string;
   pressNewShoe():
@@ -54,6 +59,11 @@ export type NewShoeShell = {
    * Posts rank + seat only. Does not fold counts or scan the stream.
    */
   pressWithdraw(): WithdrawPress;
+  /**
+   * `#nextHandBtn` → Complete hand. No body.
+   * Felt comes back from the felt view. Counts and remaining are not folded here.
+   */
+  pressNextHand(): NextHandPress;
 };
 
 /**
@@ -216,6 +226,33 @@ export function createNewShoeShell(
       page = renderNewShoe(felt, counts, remaining);
       return { rejected: false, post, html: page };
     },
+
+    pressNextHand() {
+      if (!shoeLive) return { rejected: true };
+
+      const post = handle({
+        method: "POST",
+        path: COMPLETE_HAND_PATH,
+      });
+      if (post.status !== 200) {
+        throw new Error(`complete_hand HTTP ${post.status}`);
+      }
+
+      const felt = view<FeltTable>(handle({ method: "GET", path: FELT_PATH }), "felt");
+      const counts = view<CountsInfoBar>(
+        handle({ method: "GET", path: COUNTS_PATH }),
+        "counts",
+      );
+      const remaining = view<RemainingComposition>(
+        handle({ method: "GET", path: REMAINING_PATH }),
+        "remaining",
+      );
+      registered.length = 0;
+      focusHasCard = false;
+      rememberFelt(felt);
+      page = renderNewShoe(felt, counts, remaining);
+      return { rejected: false, post, html: page };
+    },
   };
 
   function rememberFelt(felt: FeltTable) {
@@ -237,7 +274,7 @@ function view<T extends object>(response: HttpResponse, name: string): T {
 }
 
 function frame(body: string): string {
-  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n${renderRankPad()}\n${renderSuitPad()}\n${renderBackspace()}\n${body}`;
+  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n<button id="nextHandBtn" type="button">NEXT HAND</button>\n${renderRankPad()}\n${renderSuitPad()}\n${renderBackspace()}\n${body}`;
 }
 
 function renderRankPad(): string {

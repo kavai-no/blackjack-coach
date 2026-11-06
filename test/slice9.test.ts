@@ -317,7 +317,7 @@ test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, p
   assert.ok(json);
   assert.deepEqual(JSON.parse(json), remaining);
   assert.equal(JSON.parse(json).outer_rank_ring.order, "A,2,3,4,5,6,7,8,9,10,J,Q,K");
-  assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|NEXT HAND|SPLIT|SURRENDER/i.test(html), false);
+  assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|SPLIT|SURRENDER/i.test(html), false);
 });
 
 test("GWT king is not a ten, and a second rank press stays on focus seat 1", () => {
@@ -437,7 +437,7 @@ test("observe-card boundary and shell do not re-derive counts or open a network 
   assert.match(httpSrc, /projectCountsInfoBar\(/);
   assert.match(httpSrc, /projectRemainingComposition\(/);
   assert.match(httpSrc, /withdrawCard\(/);
-  assert.equal(httpSrc.includes("completeHand("), false);
+  assert.match(httpSrc, /completeHand\(/);
   assert.equal(httpSrc.includes("runningAce"), false);
   assert.equal(httpSrc.includes("COUNT_MAPS"), false);
   assert.equal(httpSrc.includes("pickSuit"), false);
