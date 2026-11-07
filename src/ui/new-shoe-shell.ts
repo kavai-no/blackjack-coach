@@ -14,11 +14,15 @@ import {
   type HttpResponse,
 } from "../http/handle.ts";
 import {
+  freshShoeCountsInfoBar,
   SHOE_DECKS,
   type CountsInfoBar,
 } from "../read/counts-info-bar.ts";
 import type { FeltTable } from "../read/felt-table.ts";
-import type { RemainingComposition } from "../read/remaining-composition.ts";
+import {
+  freshShoeRemaining,
+  type RemainingComposition,
+} from "../read/remaining-composition.ts";
 
 /** Original `#shuffleBtn` confirm before a fresh 8-deck shoe. */
 export const NEW_SHOE_CONFIRM = "Start fresh 8-deck shoe?";
@@ -306,8 +310,9 @@ function isPadSuit(value: string): value is Suit {
 }
 
 function renderIdle(): string {
+  // charting.js initial 32/104 draw + strategy.js updateAll(), before shuffleBtn.
   return frame(
-    `<div id="table"></div>\n<section id="infoBar"></section>\n<div id="combinedChart"></div>`,
+    `<div id="table"></div>\n${renderInfo(freshShoeCountsInfoBar())}\n${renderDonut(freshShoeRemaining())}`,
   );
 }
 
@@ -410,7 +415,8 @@ function renderDonut(remaining: RemainingComposition): string {
       const path = ringPath(inner, outer, arc.start, arc.end);
       if (!path) return "";
       const colour = remaining.outer_rank_ring.colours[index] ?? "#eee";
-      return `<path class="rank-path" data-chart-rank="${slice.rank}" fill="${colour}" d="${path}"></path>`;
+      const tip = tipFor(remaining, slice.rank, slice.count);
+      return `<path class="rank-path" data-chart-rank="${slice.rank}" data-tip="${tip}" fill="${colour}" d="${path}"></path>`;
     })
     .join("");
   const rankLabels = ranks

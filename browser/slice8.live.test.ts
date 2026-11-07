@@ -72,6 +72,54 @@ function startServer(): Promise<{ server: Server; origin: string }> {
   });
 }
 
+const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;
+
+async function assertFullShoeChart(page: Page): Promise<void> {
+  await page.getByText("P: 0.00%", { exact: true }).waitFor();
+  await page.getByText("D: 8.00", { exact: true }).waitFor();
+  const ra = page.locator("#ra");
+  assert.equal((await ra.innerText()).trim(), "RA: -0.88");
+  assert.equal(await ra.getAttribute("data-value"), "-0.88");
+  assert.equal(await ra.getAttribute("class"), "negative");
+  assert.equal(
+    await ra.evaluate((element) => getComputedStyle(element).color),
+    "rgb(239, 68, 68)",
+  );
+  await page.getByText("Hi-Lo: 0 / +0.00", { exact: true }).waitFor();
+  await page.getByText("APC: +0.00", { exact: true }).waitFor();
+  await page.getByText("Zen: +0.00", { exact: true }).waitFor();
+  await page.getByText("Omega II: +0.00", { exact: true }).waitFor();
+  await page.getByText("Ace: +0.00", { exact: true }).waitFor();
+
+  const labels = page.locator("#combinedChart .rank-label");
+  assert.equal(await page.locator("#combinedChart svg .rank-path").count(), 13);
+  assert.equal(await page.locator("#combinedChart svg .suit-slice").count(), 4);
+  assert.equal(await labels.count(), 13);
+  for (let index = 0; index < 13; index += 1) {
+    const label = labels.nth(index);
+    assert.equal(await label.isVisible(), true);
+    assert.equal((await label.textContent())?.trim(), "32");
+  }
+
+  const tip = page.locator("#combinedChart .d3-tooltip");
+  for (const rank of RANKS) {
+    const slice = page.locator(`#combinedChart .rank-path[data-chart-rank="${rank}"]`);
+    assert.equal(await slice.isVisible(), true);
+    await slice.hover();
+    await tip.waitFor({ state: "visible" });
+    assert.equal((await tip.textContent())?.trim(), `${rank}: 32`);
+  }
+
+  for (const suit of SUITS) {
+    const slice = page.locator(`#combinedChart .suit-slice[data-suit="${suit.suit}"]`);
+    assert.equal(await slice.isVisible(), true);
+    assert.equal((await slice.textContent())?.trim(), suit.symbol);
+    await slice.hover();
+    await tip.waitFor({ state: "visible" });
+    assert.equal((await tip.textContent())?.trim(), `${suit.symbol}: 104`);
+  }
+}
+
 async function assertEmptyShoe(page: Page): Promise<void> {
   const seats = await page.locator("[data-seat]").evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute("data-seat")),
@@ -99,41 +147,9 @@ async function assertEmptyShoe(page: Page): Promise<void> {
   assert.match(ring, /rgb\(0,\s*255,\s*136\)/);
   assert.equal(await page.locator(".seat-round.active").count(), 1);
 
-  await page.getByText("P: 0.00%", { exact: true }).waitFor();
-  await page.getByText("D: 8.00", { exact: true }).waitFor();
-  const ra = page.locator("#ra");
-  assert.equal((await ra.innerText()).trim(), "RA: -0.88");
-  assert.equal(await ra.getAttribute("data-value"), "-0.88");
-  assert.equal(await ra.getAttribute("class"), "negative");
-  assert.equal(
-    await ra.evaluate((element) => getComputedStyle(element).color),
-    "rgb(239, 68, 68)",
-  );
-  await page.getByText("Hi-Lo: 0 / +0.00", { exact: true }).waitFor();
-  await page.getByText("APC: +0.00", { exact: true }).waitFor();
-  await page.getByText("Zen: +0.00", { exact: true }).waitFor();
-  await page.getByText("Omega II: +0.00", { exact: true }).waitFor();
   await page.getByText("Ace: +0.00", { exact: true }).waitFor();
 
-  const labels = page.locator("#combinedChart .rank-label");
-  assert.equal(await page.locator("#combinedChart svg .rank-path").count(), 13);
-  assert.equal(await page.locator("#combinedChart svg .suit-slice").count(), 4);
-  assert.equal(await labels.count(), 13);
-  for (let index = 0; index < 13; index += 1) {
-    const label = labels.nth(index);
-    assert.equal(await label.isVisible(), true);
-    assert.equal((await label.textContent())?.trim(), "32");
-  }
-
-  for (const suit of SUITS) {
-    const slice = page.locator(`#combinedChart .suit-slice[data-suit="${suit.suit}"]`);
-    assert.equal(await slice.isVisible(), true);
-    assert.equal((await slice.textContent())?.trim(), suit.symbol);
-    await slice.hover();
-    const tip = page.locator("#combinedChart .d3-tooltip");
-    await tip.waitFor({ state: "visible" });
-    assert.equal((await tip.textContent())?.trim(), `${suit.symbol}: 104`);
-  }
+  await assertFullShoeChart(page);
 }
 
 test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm dismiss", async () => {
@@ -182,9 +198,9 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
     assert.equal(await page.locator("#cardsGrid").count(), 0);
     assert.equal(await page.locator("#suitGrid").count(), 0);
     assert.equal(await page.getByRole("button", { name: "SPLIT" }).count(), 0);
-    assert.equal(await page.locator(".rank-label").count(), 0);
-    assert.equal(await page.getByText("P: 0.00%", { exact: true }).count(), 0);
-    assert.equal(await page.getByText("RA: -0.88", { exact: true }).count(), 0);
+    await assertFullShoeChart(page);
+    assert.equal(await page.locator("[data-seat]").count(), 8);
+    assert.equal(await page.locator(".hand-total").count(), 0);
 
     const seat2 = page.locator('[data-seat="2"] .seat-round');
     await seat2.waitFor();
@@ -241,11 +257,25 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
     const again = cancelled.getByRole("button", { name: "NEW SHOE" });
     await again.waitFor();
     assert.equal(await again.isEnabled(), true);
+    const before = cancelled.locator('[data-seat="2"] .seat-round');
+    await before.click();
+    assert.equal(
+      await before.evaluate((element) => element.classList.contains("active")),
+      true,
+    );
     await again.click();
-    assert.equal(await cancelled.locator("[data-seat]").count(), 8);
-    assert.equal(await cancelled.getByText("P: 0.00%", { exact: true }).count(), 0);
-    assert.equal(await cancelled.getByText("RA: -0.88", { exact: true }).count(), 0);
-    assert.equal(await cancelled.locator(".rank-label").count(), 0);
+    assert.equal(
+      await before.evaluate((element) => element.classList.contains("active")),
+      true,
+    );
+    assert.equal(
+      await cancelled
+        .locator('[data-seat="1"] .seat-round')
+        .evaluate((element) => element.classList.contains("active")),
+      false,
+    );
+    assert.equal((await cancelled.locator("#ra").innerText()).trim(), "RA: -0.88");
+    assert.equal(await cancelled.locator(".rank-label").count(), 13);
     await cancelled.close();
   } finally {
     await browser?.close();

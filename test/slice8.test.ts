@@ -152,7 +152,9 @@ test("GWT first NEW SHOE paints empty felt, RA −0.875, full 8-deck donut", () 
   assert.match(idle, />NEW SHOE</);
   assert.equal(idle.includes("-0.875"), false);
   assert.equal(idle.includes("data-seat"), false);
-  assert.equal(idle.includes("combinedChart-data"), false);
+  assert.match(idle, />RA: -0\.88</);
+  assert.match(idle, /data-tip="A: 32"/);
+  assert.equal(idle.includes("combinedChart-data"), true);
   assert.equal(/RoR|Wong|21\+3|sidebet|SPLIT/i.test(idle), false);
 
   const pressed = shell.pressNewShoe();
@@ -290,6 +292,8 @@ test("GWT first NEW SHOE paints empty felt, RA −0.875, full 8-deck donut", () 
   for (const symbol of ["♠", "♣", "♥", "♦"]) {
     assert.match(html, new RegExp(`data-tip="${symbol}: 104"`));
   }
+  assert.match(html, /data-tip="A: 32"/);
+  assert.match(html, /data-tip="10: 32"/);
 
   assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|SPLIT|SURRENDER/i.test(html), false);
 });

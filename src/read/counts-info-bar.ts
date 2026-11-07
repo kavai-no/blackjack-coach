@@ -177,3 +177,11 @@ export function projectCountsInfoBar(
 
   return present(fold);
 }
+
+/**
+ * Original `DOMContentLoaded` calls `updateAll()` after `initRemaining()`,
+ * before NEW SHOE. Same presenter as a fresh `shoe_started`. Not an event.
+ */
+export function freshShoeCountsInfoBar(): CountsInfoBar {
+  return projectCountsInfoBar([{ type: "shoe_started", decks: SHOE_DECKS }]);
+}

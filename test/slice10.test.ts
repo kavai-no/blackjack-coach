@@ -188,13 +188,18 @@ test("GWT click #shuffleBtn confirms, then paints the three empty-shoe views", (
     /<div class="topbar"><button class="btn shuffle" id="shuffleBtn" type="button">NEW SHOE<\/button><button class="btn next-hand" id="nextHandBtn" type="button">NEXT HAND<\/button><\/div>/,
   );
   assert.equal(idle.includes("-0.875"), false);
-  assert.equal(idle.includes("RA:"), false);
-  assert.equal(idle.includes("combinedChart-data"), false);
+  assert.match(idle, />RA: -0\.88</);
+  assert.match(idle, /data-tip="A: 32"/);
+  assert.match(idle, /id="combinedChart-data"/);
+  assert.equal(
+    idle.match(/class="rank-label"[^>]*>32<\/text>/g)?.length,
+    13,
+  );
   assert.match(idle, /data-seat="2"/);
   assert.equal(document.querySelector("#table") !== null, true);
   assert.equal(document.querySelector("#infoBar") !== null, true);
   assert.equal(document.querySelector("#combinedChart") !== null, true);
-  assert.equal(document.querySelector("#combinedChart-data"), null);
+  assert.equal(document.querySelector("#combinedChart-data") !== null, true);
   assert.equal(document.querySelector("#cardsGrid"), null);
   assert.equal(document.querySelector("#suitGrid"), null);
   assert.equal(PARKS.test(idle), false);
@@ -219,13 +224,12 @@ test("cancelled NEW SHOE does not paint the empty shoe", () => {
     seen.push(message);
     return false;
   });
+  const before = document.querySelector("#app")?.innerHTML ?? "";
   click(document.querySelector("#shuffleBtn"));
   assert.deepEqual(seen, ["Start fresh 8-deck shoe?"]);
   const html = document.querySelector("#app")?.innerHTML ?? "";
-  assert.equal(html.includes("-0.875"), false);
-  assert.equal(html.includes("RA:"), false);
-  assert.equal(html.includes("combinedChart-data"), false);
-  assert.match(html, /data-seat="2"/);
+  assert.equal(html, before);
+  assert.match(html, />RA: -0\.88</);
   assert.match(html, /id="shuffleBtn"/);
 });
 

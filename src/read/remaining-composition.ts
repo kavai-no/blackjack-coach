@@ -1,4 +1,5 @@
 import { RANKS, type Rank, type Suit } from "../counting/maps.ts";
+import { SHOE_DECKS } from "./counts-info-bar.ts";
 import { SEATS, type DomainEvent, type Seat } from "../write/events.ts";
 
 /** Donut draw order (HCL inner pie), not `state.js` storage order. */
@@ -173,6 +174,17 @@ export function projectRemainingComposition(
     throw new Error("remaining composition requires shoe_started");
   }
   return composition;
+}
+
+/**
+ * Original `initCombinedChart` draws 32s and 104s on load
+ * (`modules/charting.js` initial rank/suit data), before NEW SHOE.
+ * Same presenter as a fresh `shoe_started`. Not an event.
+ */
+export function freshShoeRemaining(): RemainingComposition {
+  return projectRemainingComposition([
+    { type: "shoe_started", decks: SHOE_DECKS },
+  ]);
 }
 
 type TrackedCard = { rank: Rank; suit: Suit | null; seat: Seat };

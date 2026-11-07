@@ -92,7 +92,7 @@ export function mountNewShoePage(document: PageDocument, confirm: Confirm): void
       if (!result.rejected) paint();
     });
     bindFocus(root);
-    bindSuitTips(root);
+    bindChartTips(root);
   };
 
   paint();
@@ -109,11 +109,15 @@ function bindFocus(root: AppRoot): void {
   }
 }
 
-/** Suit-slice hover shows the projection tooltip. No command. */
-function bindSuitTips(root: AppRoot): void {
+/** Rank or suit slice hover shows the projection tooltip. No command. */
+function bindChartTips(root: AppRoot): void {
   const tip = root.querySelector(".d3-tooltip");
   if (!tip) return;
-  for (const slice of Array.from(root.querySelectorAll(".suit-slice"))) {
+  const slices = [
+    ...Array.from(root.querySelectorAll(".rank-path")),
+    ...Array.from(root.querySelectorAll(".suit-slice")),
+  ];
+  for (const slice of slices) {
     slice.addEventListener("mouseenter", () => {
       tip.textContent = slice.getAttribute("data-tip");
       tip.hidden = false;
