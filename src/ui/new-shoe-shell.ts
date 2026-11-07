@@ -386,7 +386,7 @@ function renderCard(card: FeltTable["seat_piles"][number]["cards"][number]): str
 
 function renderInfo(counts: CountsInfoBar): string {
   const chrome = counts.panel_chrome;
-  return `<section id="infoBar" data-chrome-id="${chrome.id}" style="background:${chrome.bg};padding:${chrome.padding};border-radius:${chrome.radius};font-size:${chrome.font}"><div class="info-top" data-info-top="${chrome.info_top}" data-layout="${counts.layout_order}"><span id="penetration">${counts.penetration}</span><span id="decksLeft">${counts.decks_left}</span><span id="ra" class="${counts.ra.className}" data-value="${counts.ra.value}" style="color:${counts.ra.colour}">${counts.ra.label} ${counts.ra.numeric}</span></div><div class="counts" data-counts-grid="${chrome.counts_grid}"><span id="hiLo">${counts.hilo_display}</span><span id="apcTC">${counts.apc_tc}</span><span id="zenTC">${counts.zen_tc}</span><span id="omegaIITC">${counts.omega_ii_tc}</span><span id="aceTC">${counts.ace_tc}</span></div></section>`;
+  return `<section id="infoBar" data-chrome-id="${chrome.id}" style="background:${chrome.bg};padding:${chrome.padding};border-radius:${chrome.radius};font-size:${chrome.font}"><div class="info-top" data-info-top="${chrome.info_top}" data-layout="${counts.layout_order}"><span id="penetration">${counts.penetration}</span><span id="decksLeft">${counts.decks_left}</span><span id="ra" class="${counts.ra.className}" data-value="${counts.ra.value}" style="color:${counts.ra.colour}">${counts.ra.label} ${counts.ra.value}</span></div><div class="counts" data-counts-grid="${chrome.counts_grid}"><span id="hiLo">${counts.hilo_display}</span><span id="apcTC">${counts.apc_tc}</span><span id="zenTC">${counts.zen_tc}</span><span id="omegaIITC">${counts.omega_ii_tc}</span><span id="aceTC">${counts.ace_tc}</span></div></section>`;
 }
 
 function renderDonut(remaining: RemainingComposition): string {
@@ -394,26 +394,87 @@ function renderDonut(remaining: RemainingComposition): string {
     ? remaining.chart_host.id.slice(1)
     : remaining.chart_host.id;
   const json = JSON.stringify(remaining).replaceAll("<", "\\u003c");
-  const rankLabels = remaining.remaining_by_rank
-    .map((slice) => {
-      const tip = tipFor(remaining, slice.rank, slice.count);
-      return `<span class="rank-label" data-chart-rank="${slice.rank}" data-tip="${tip}">${slice.count}</span>`;
+  const size = 100;
+  const outer = (size / 2) * 0.8;
+  const inner = outer * 0.5;
+  const ranks = remaining.remaining_by_rank;
+  const suitRows = (
+    remaining as unknown as Record<string, { suit: string; count: number }[]>
+  )["remaining_" + "by_suit"];
+  const rankArcs = pieArcs(ranks.map((slice) => slice.count));
+  const suitArcs = pieArcs(suitRows.map((slice) => slice.count));
+  const rankPaths = ranks
+    .map((slice, index) => {
+      const arc = rankArcs[index];
+      if (!arc) return "";
+      const path = ringPath(inner, outer, arc.start, arc.end);
+      if (!path) return "";
+      const colour = remaining.outer_rank_ring.colours[index] ?? "#eee";
+      return `<path class="rank-path" data-chart-rank="${slice.rank}" fill="${colour}" d="${path}"></path>`;
     })
     .join("");
-  const suitRows = (
-    remaining as unknown as Record<
-      string,
-      { suit: "spades" | "hearts" | "diamonds" | "clubs"; count: number }[]
-    >
-  )["remaining_" + "by_suit"];
+  const rankLabels = ranks
+    .map((slice, index) => {
+      const arc = rankArcs[index];
+      if (!arc || arc.end <= arc.start) return "";
+      const [x, y] = centroid((inner * 0.8 + outer * 0.9) / 2, arc.start, arc.end);
+      return `<text class="rank-label" data-chart-rank="${slice.rank}" text-anchor="middle" font-size="8" fill="#eee" dy=".35em" transform="translate(${x},${y})">${slice.count}</text>`;
+    })
+    .join("");
   const suitSlices = suitRows
     .map((slice, index) => {
+      const arc = suitArcs[index];
+      if (!arc) return "";
+      const path = ringPath(0, inner, arc.start, arc.end);
+      if (!path) return "";
       const symbol = remaining.inner_suit_pie.symbols[index] ?? slice.suit;
+      const colour = remaining.inner_suit_pie.colours[index] ?? "#000";
       const tip = tipFor(remaining, symbol, slice.count);
-      return `<span class="suit-slice" data-suit="${slice.suit}" data-tip="${tip}">${symbol}</span>`;
+      const [x, y] = centroid(inner / 2, arc.start, arc.end);
+      return `<g class="suit-slice" data-suit="${slice.suit}" data-tip="${tip}"><path fill="${colour}" d="${path}"></path><text class="suit-label" text-anchor="middle" font-size="14" fill="#fff" dy=".35em" transform="translate(${x},${y})">${symbol}</text></g>`;
     })
     .join("");
-  return `<div id="${hostId}">${rankLabels}${suitSlices}<span class="d3-tooltip" hidden></span></div>\n<script type="application/json" id="combinedChart-data">${json}</script>`;
+  return `<div id="${hostId}"><svg viewBox="0 0 ${size} ${size}" width="100%" height="180" preserveAspectRatio="xMidYMid meet" role="img"><g transform="translate(${size / 2},${size / 2})"><g class="rank-ring">${rankPaths}${rankLabels}</g><g class="suit-pie">${suitSlices}</g></g></svg><span class="d3-tooltip" hidden></span></div>\n<script type="application/json" id="combinedChart-data">${json}</script>`;
+}
+
+const TAU = Math.PI * 2;
+
+function pieArcs(values: number[]): { start: number; end: number }[] {
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return values.map(() => ({ start: 0, end: 0 }));
+  let cursor = 0;
+  return values.map((value, index) => {
+    const start = cursor;
+    const end = index === values.length - 1 ? TAU : cursor + (value / total) * TAU;
+    cursor = end;
+    return { start, end };
+  });
+}
+
+function ringPath(inner: number, outer: number, start: number, end: number): string {
+  const span = end - start;
+  if (span <= 1e-6) return "";
+  const large = span > Math.PI ? 1 : 0;
+  const [x0, y0] = pt(outer, start);
+  const [x1, y1] = pt(outer, end);
+  if (inner <= 0) {
+    return `M 0 0 L ${x0} ${y0} A ${outer} ${outer} 0 ${large} 1 ${x1} ${y1} Z`;
+  }
+  const [x2, y2] = pt(inner, end);
+  const [x3, y3] = pt(inner, start);
+  return `M ${x0} ${y0} A ${outer} ${outer} 0 ${large} 1 ${x1} ${y1} L ${x2} ${y2} A ${inner} ${inner} 0 ${large} 0 ${x3} ${y3} Z`;
+}
+
+function centroid(radius: number, start: number, end: number): [number, number] {
+  return pt(radius, (start + end) / 2);
+}
+
+function pt(radius: number, angle: number): [number, number] {
+  return [round(Math.sin(angle) * radius), round(-Math.cos(angle) * radius)];
+}
+
+function round(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
 
 function tipFor(

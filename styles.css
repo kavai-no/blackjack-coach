@@ -69,6 +69,7 @@ body {
   font-weight: bold;
   font-size: 0.9rem;
   box-shadow: 0 4px 12px #0008;
+  cursor: pointer;
 }
 .seat[data-seat="D"] .seat-round { background: #991b1b; color: #fca5a5; }
 .seat:not([data-seat="D"]) .seat-round { background: #1e40af; color: #93c5fd; }
@@ -116,15 +117,11 @@ body {
   overflow: hidden;
 }
 #combinedChart { width: 100%; min-height: 180px; flex: 1; position: relative; }
-.rank-label, .suit-slice {
-  display: inline-block;
-  min-width: 1.6em;
-  margin: 2px;
-  text-align: center;
-  font-size: 0.85rem;
-  color: #eee;
-}
-.suit-slice { cursor: pointer; }
+#combinedChart svg { width: 100%; height: 180px; display: block; }
+#combinedChart .rank-label,
+#combinedChart .suit-label { pointer-events: none; }
+#combinedChart .suit-slice,
+#combinedChart .rank-path { cursor: pointer; }
 .d3-tooltip {
   position: absolute;
   z-index: 30;

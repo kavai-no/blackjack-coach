@@ -295,7 +295,7 @@ test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, p
   for (const text of [
     counts.penetration,
     counts.decks_left,
-    `${counts.ra.label} ${counts.ra.numeric}`,
+    `${counts.ra.label} ${counts.ra.value}`,
     counts.ra.value,
     counts.hilo_display,
     counts.apc_tc,

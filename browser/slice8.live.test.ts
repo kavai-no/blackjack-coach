@@ -15,8 +15,8 @@ import { chromium, type Browser, type Page } from "playwright";
  *
  * Not claimed here: the HCL mid-shoe branch that double-clicks hero seat 1,
  * deals K♥/K♠, and clicks SPLIT. The live entry strips `#cardsGrid` and
- * `#suitGrid`, and does not paint SPLIT. Seat headers also do not exist
- * until the first NEW SHOE, so "click seat 2 before any shoe" cannot run.
+ * `#suitGrid`, and does not paint SPLIT. Seat headers are idle chrome so
+ * seat 2 can be focused before the first shoe.
  */
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -102,7 +102,7 @@ async function assertEmptyShoe(page: Page): Promise<void> {
   await page.getByText("P: 0.00%", { exact: true }).waitFor();
   await page.getByText("D: 8.00", { exact: true }).waitFor();
   const ra = page.locator("#ra");
-  assert.equal((await ra.innerText()).trim(), "RA: -0.875");
+  assert.equal((await ra.innerText()).trim(), "RA: -0.88");
   assert.equal(await ra.getAttribute("data-value"), "-0.88");
   assert.equal(await ra.getAttribute("class"), "negative");
   assert.equal(
@@ -116,21 +116,23 @@ async function assertEmptyShoe(page: Page): Promise<void> {
   await page.getByText("Ace: +0.00", { exact: true }).waitFor();
 
   const labels = page.locator("#combinedChart .rank-label");
+  assert.equal(await page.locator("#combinedChart svg .rank-path").count(), 13);
+  assert.equal(await page.locator("#combinedChart svg .suit-slice").count(), 4);
   assert.equal(await labels.count(), 13);
   for (let index = 0; index < 13; index += 1) {
     const label = labels.nth(index);
     assert.equal(await label.isVisible(), true);
-    assert.equal((await label.innerText()).trim(), "32");
+    assert.equal((await label.textContent())?.trim(), "32");
   }
 
   for (const suit of SUITS) {
     const slice = page.locator(`#combinedChart .suit-slice[data-suit="${suit.suit}"]`);
     assert.equal(await slice.isVisible(), true);
-    assert.equal((await slice.innerText()).trim(), suit.symbol);
+    assert.equal((await slice.textContent())?.trim(), suit.symbol);
     await slice.hover();
     const tip = page.locator("#combinedChart .d3-tooltip");
     await tip.waitFor({ state: "visible" });
-    assert.equal((await tip.innerText()).trim(), `${suit.symbol}: 104`);
+    assert.equal((await tip.textContent())?.trim(), `${suit.symbol}: 104`);
   }
 }
 
@@ -177,10 +179,31 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
     const shoe = page.getByRole("button", { name: "NEW SHOE" });
     assert.equal(await shoe.isVisible(), true);
     assert.equal(await shoe.isEnabled(), true);
-    assert.equal(await page.locator("[data-seat]").count(), 0);
     assert.equal(await page.locator("#cardsGrid").count(), 0);
     assert.equal(await page.locator("#suitGrid").count(), 0);
     assert.equal(await page.getByRole("button", { name: "SPLIT" }).count(), 0);
+    assert.equal(await page.locator(".rank-label").count(), 0);
+    assert.equal(await page.getByText("P: 0.00%", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("RA: -0.88", { exact: true }).count(), 0);
+
+    const seat2 = page.locator('[data-seat="2"] .seat-round');
+    await seat2.waitFor();
+    assert.equal(await seat2.isVisible(), true);
+    await seat2.click();
+    assert.equal(
+      await seat2.evaluate((element) => element.classList.contains("active")),
+      true,
+    );
+    assert.match(
+      await seat2.evaluate((element) => getComputedStyle(element).boxShadow),
+      /rgb\(0,\s*255,\s*136\)/,
+    );
+    assert.equal(
+      await page
+        .locator('[data-seat="1"] .seat-round')
+        .evaluate((element) => element.classList.contains("active")),
+      false,
+    );
 
     await shoe.click();
     await assertEmptyShoe(page);
@@ -219,8 +242,9 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
     await again.waitFor();
     assert.equal(await again.isEnabled(), true);
     await again.click();
-    assert.equal(await cancelled.locator("[data-seat]").count(), 0);
+    assert.equal(await cancelled.locator("[data-seat]").count(), 8);
     assert.equal(await cancelled.getByText("P: 0.00%", { exact: true }).count(), 0);
+    assert.equal(await cancelled.getByText("RA: -0.88", { exact: true }).count(), 0);
     assert.equal(await cancelled.locator(".rank-label").count(), 0);
     await cancelled.close();
   } finally {

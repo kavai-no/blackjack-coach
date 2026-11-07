@@ -229,7 +229,7 @@ test("GWT first NEW SHOE paints empty felt, RA −0.875, full 8-deck donut", () 
   assert.match(ra, /class="negative"/);
   assert.match(ra, /#ef4444/);
   assert.match(ra, /data-value="-0\.88"/);
-  assert.match(ra, />RA: -0\.875</);
+  assert.match(ra, />RA: -0\.88</);
   for (const text of [
     counts.penetration,
     counts.decks_left,
@@ -283,7 +283,9 @@ test("GWT first NEW SHOE paints empty felt, RA −0.875, full 8-deck donut", () 
   assert.match(html, /id="combinedChart"/);
   assert.equal(donut.outer_rank_ring.order, "A,2,3,4,5,6,7,8,9,10,J,Q,K");
   assert.deepEqual(donut.inner_suit_pie.symbols, ["♠", "♣", "♥", "♦"]);
-  assert.equal(html.match(/class="rank-label"[^>]*>32<\/span>/g)?.length, 13);
+  assert.equal(html.match(/class="rank-label"[^>]*>32<\/text>/g)?.length, 13);
+  assert.equal(html.match(/<svg\b/g)?.length, 1);
+  assert.equal(html.match(/class="rank-path"/g)?.length, 13);
   assert.equal(html.match(/class="suit-slice"/g)?.length, 4);
   for (const symbol of ["♠", "♣", "♥", "♦"]) {
     assert.match(html, new RegExp(`data-tip="${symbol}: 104"`));
@@ -382,7 +384,7 @@ test("GWT mid-shoe NEW SHOE emits hand_completed then shoe_started and repaints 
     true,
   );
 
-  assert.match(pressed.html, />RA: -0\.875</);
+  assert.match(pressed.html, />RA: -0\.88</);
   assert.equal(pressed.html.includes("mini"), false);
   assert.equal(pressed.html.includes("Total:"), false);
   const json = pressed.html.match(

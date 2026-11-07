@@ -27,6 +27,16 @@ type PageDocument = {
   querySelector(selector: string): AppRoot | null;
 };
 
+const IDLE_SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"] as const;
+
+/** Seats exist before any shoe so the player can move the focus ring. Not a projection. */
+function idleSeatChrome(): string {
+  return IDLE_SEATS.map((seat) => {
+    const round = seat === "1" ? "seat-round active your-seat" : "seat-round";
+    return `<section class="seat" data-seat="${seat}"><div class="${round}">${seat}</div><div class="hand" id="hand-${seat}"></div></section>`;
+  }).join("");
+}
+
 /**
  * NEW SHOE / NEXT HAND screen. The shell also emits the rank pad and the suit pad;
  * this page does not paint either pad.
@@ -52,6 +62,10 @@ export function presentNewShoeFragment(fragment: string): string {
       /<div id="combinedChart">[\s\S]*?<\/div>/,
       (host) =>
         `<div class="bottom"><div class="charts-grid">${host}</div></div>`,
+    )
+    .replace(
+      '<div class="table" id="table"></div>',
+      `<div class="table" id="table">${idleSeatChrome()}</div>`,
     );
 }
 
