@@ -4,13 +4,23 @@ import { createInMemoryEventStore } from "../write/in-memory-store.ts";
 
 export type Confirm = (message: string) => boolean;
 
-type Clickable = {
-  addEventListener(type: "click", listener: () => void): void;
+type ClassList = {
+  add(token: string): void;
+  remove(token: string): void;
+};
+
+type BoundNode = {
+  classList: ClassList;
+  hidden?: boolean;
+  textContent: string | null;
+  getAttribute(name: string): string | null;
+  addEventListener(type: string, listener: () => void): void;
 };
 
 type AppRoot = {
   innerHTML: string;
-  querySelector(selector: string): Clickable | null;
+  querySelector(selector: string): BoundNode | null;
+  querySelectorAll(selector: string): ArrayLike<BoundNode>;
 };
 
 type PageDocument = {
@@ -39,8 +49,9 @@ export function presentNewShoeFragment(fragment: string): string {
       "</div></div>\n<section id=\"infoBar\"",
     )
     .replace(
-      '<div id="combinedChart"></div>',
-      '<div class="bottom"><div class="charts-grid"><div id="combinedChart"></div></div></div>',
+      /<div id="combinedChart">[\s\S]*?<\/div>/,
+      (host) =>
+        `<div class="bottom"><div class="charts-grid">${host}</div></div>`,
     );
 }
 
@@ -66,7 +77,35 @@ export function mountNewShoePage(document: PageDocument, confirm: Confirm): void
       const result = shell.pressNextHand();
       if (!result.rejected) paint();
     });
+    bindFocus(root);
+    bindSuitTips(root);
   };
 
   paint();
+}
+
+/** Focus ring is UI chrome. Clicking a seat header does not append an event. */
+function bindFocus(root: AppRoot): void {
+  const rounds = Array.from(root.querySelectorAll(".seat-round"));
+  for (const round of rounds) {
+    round.addEventListener("click", () => {
+      for (const other of rounds) other.classList.remove("active");
+      round.classList.add("active");
+    });
+  }
+}
+
+/** Suit-slice hover shows the projection tooltip. No command. */
+function bindSuitTips(root: AppRoot): void {
+  const tip = root.querySelector(".d3-tooltip");
+  if (!tip) return;
+  for (const slice of Array.from(root.querySelectorAll(".suit-slice"))) {
+    slice.addEventListener("mouseenter", () => {
+      tip.textContent = slice.getAttribute("data-tip");
+      tip.hidden = false;
+    });
+    slice.addEventListener("mouseleave", () => {
+      tip.hidden = true;
+    });
+  }
 }

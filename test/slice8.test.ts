@@ -26,6 +26,7 @@ import {
 } from "../src/write/in-memory-store.ts";
 import { observeCard } from "../src/write/observe-card.ts";
 import { setSuit } from "../src/write/set-suit.ts";
+import { splitHand } from "../src/write/split-hand.ts";
 
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"];
@@ -282,6 +283,11 @@ test("GWT first NEW SHOE paints empty felt, RA −0.875, full 8-deck donut", () 
   assert.match(html, /id="combinedChart"/);
   assert.equal(donut.outer_rank_ring.order, "A,2,3,4,5,6,7,8,9,10,J,Q,K");
   assert.deepEqual(donut.inner_suit_pie.symbols, ["♠", "♣", "♥", "♦"]);
+  assert.equal(html.match(/class="rank-label"[^>]*>32<\/span>/g)?.length, 13);
+  assert.equal(html.match(/class="suit-slice"/g)?.length, 4);
+  for (const symbol of ["♠", "♣", "♥", "♦"]) {
+    assert.match(html, new RegExp(`data-tip="${symbol}: 104"`));
+  }
 
   assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|SPLIT|SURRENDER/i.test(html), false);
 });
@@ -392,6 +398,112 @@ test("GWT mid-shoe NEW SHOE emits hand_completed then shoe_started and repaints 
       ["GET", "/views/counts"],
       ["GET", "/views/remaining"],
     ],
+  );
+});
+
+test("GWT start_shoe_mid_shoe_reshuffle: populated split A/B resets felt, counts, and remaining", () => {
+  const store = createInMemoryEventStore();
+  const first = handleHttp(store, {
+    method: "POST",
+    path: START_SHOE_PATH,
+    body: { decks: 8 },
+  });
+  ackBody(first);
+  observeCard(store, { rank: "K", seat: "1" });
+  setSuit(store, { suit: "hearts", seat: "1" });
+  observeCard(store, { rank: "K", seat: "1" });
+  setSuit(store, { suit: "spades", seat: "1" });
+  const split = splitHand(store, { seat: "1" });
+  assert.deepEqual(
+    split.events.map((event) => event.type),
+    ["hand_split"],
+  );
+
+  const dealt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(
+    dealt.split_piles.map((pile) => ({
+      hand: pile.hand,
+      face:
+        pile.cards[0] && pile.cards[0].suit
+          ? pile.cards[0].mini_card_face.face
+          : pile.cards[0]?.rank,
+      total: dealt.hand_totals.find((total) => total.hand === pile.hand)?.total,
+    })),
+    [
+      { hand: "A", face: "K♥", total: 10 },
+      { hand: "B", face: "K♠", total: 10 },
+    ],
+  );
+  assert.notEqual(projectCountsInfoBar(store.read(TABLE_STREAM)).ra.numeric, -0.875);
+  assert.equal(
+    projectRemainingComposition(store.read(TABLE_STREAM)).remaining_by_rank.find(
+      (slice) => slice.rank === "K",
+    )?.count,
+    30,
+  );
+
+  const reshuffle = handleHttp(store, {
+    method: "POST",
+    path: START_SHOE_PATH,
+    body: { decks: 8 },
+  });
+  const post = ackBody(reshuffle);
+  assert.deepEqual(
+    post.events.map((event) => event.type),
+    ["hand_completed", "shoe_started"],
+  );
+  assert.equal(post.events[1]?.decks, 8);
+  assert.equal(
+    store.read(TABLE_STREAM).some((event) => event.type === "hand_completed"),
+    true,
+  );
+
+  const events = store.read(TABLE_STREAM);
+  const felt = handleHttp(store, { method: "GET", path: FELT_PATH });
+  const counts = handleHttp(store, { method: "GET", path: COUNTS_PATH });
+  const remaining = handleHttp(store, { method: "GET", path: REMAINING_PATH });
+  assert.deepEqual(felt.body, projectFeltTable(events));
+  assert.deepEqual(counts.body, projectCountsInfoBar(events));
+  assert.deepEqual(remaining.body, projectRemainingComposition(events));
+
+  const feltBody = felt.body as ReturnType<typeof projectFeltTable>;
+  assert.deepEqual(feltBody.split_piles, []);
+  assert.deepEqual(feltBody.hand_totals, []);
+  assert.equal(
+    feltBody.seat_piles.every((pile) => pile.cards.length === 0),
+    true,
+  );
+  assert.equal(feltBody.seat_order, "D,7,6,5,4,3,2,1");
+
+  const countsBody = counts.body as ReturnType<typeof projectCountsInfoBar>;
+  assert.equal(countsBody.penetration, "P: 0.00%");
+  assert.equal(countsBody.decks_left, "D: 8.00");
+  assert.equal(countsBody.ra.numeric, -0.875);
+  assert.equal(
+    countsBody.ra.numeric,
+    countsBody.acesLeft / (32 * countsBody.decksLeft) - 1,
+  );
+  assert.equal(countsBody.ra.value, "-0.88");
+  assert.equal(countsBody.ra.colour, "#ef4444");
+  assert.equal(countsBody.hilo_rc, 0);
+  assert.equal(countsBody.hilo_display, "Hi-Lo: 0 / +0.00");
+  assert.equal(countsBody.apc_tc, "APC: +0.00");
+  assert.equal(countsBody.zen_tc, "Zen: +0.00");
+  assert.equal(countsBody.omega_ii_tc, "Omega II: +0.00");
+  assert.equal(countsBody.ace_tc, "Ace: +0.00");
+
+  const remainingBody = remaining.body as ReturnType<typeof projectRemainingComposition>;
+  assert.equal(
+    remainingBody.remaining_by_rank.every((slice) => slice.count === 32),
+    true,
+  );
+  assert.equal(
+    remainingBody.remaining_by_suit.every((slice) => slice.count === 104),
+    true,
+  );
+  assert.equal(
+    remainingBody.remaining_by_rank_suit.every((cell) => cell.count === 8),
+    true,
   );
 });
 

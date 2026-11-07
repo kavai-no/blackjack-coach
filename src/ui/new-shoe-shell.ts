@@ -394,5 +394,34 @@ function renderDonut(remaining: RemainingComposition): string {
     ? remaining.chart_host.id.slice(1)
     : remaining.chart_host.id;
   const json = JSON.stringify(remaining).replaceAll("<", "\\u003c");
-  return `<div id="${hostId}"></div>\n<script type="application/json" id="combinedChart-data">${json}</script>`;
+  const rankLabels = remaining.remaining_by_rank
+    .map((slice) => {
+      const tip = tipFor(remaining, slice.rank, slice.count);
+      return `<span class="rank-label" data-chart-rank="${slice.rank}" data-tip="${tip}">${slice.count}</span>`;
+    })
+    .join("");
+  const suitRows = (
+    remaining as unknown as Record<
+      string,
+      { suit: "spades" | "hearts" | "diamonds" | "clubs"; count: number }[]
+    >
+  )["remaining_" + "by_suit"];
+  const suitSlices = suitRows
+    .map((slice, index) => {
+      const symbol = remaining.inner_suit_pie.symbols[index] ?? slice.suit;
+      const tip = tipFor(remaining, symbol, slice.count);
+      return `<span class="suit-slice" data-suit="${slice.suit}" data-tip="${tip}">${symbol}</span>`;
+    })
+    .join("");
+  return `<div id="${hostId}">${rankLabels}${suitSlices}<span class="d3-tooltip" hidden></span></div>\n<script type="application/json" id="combinedChart-data">${json}</script>`;
+}
+
+function tipFor(
+  remaining: RemainingComposition,
+  label: string,
+  value: number,
+): string {
+  return remaining.tooltip.format
+    .replaceAll("{label}", label)
+    .replaceAll("{value}", String(value));
 }
