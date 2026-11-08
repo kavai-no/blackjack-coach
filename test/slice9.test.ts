@@ -242,8 +242,11 @@ test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, p
   assert.equal(counts.hilo_display, `Hi-Lo: -1 / ${signedFixed2(-1 / math.decksLeft)}`);
   assert.equal(counts.apc_tc, `APC: ${signedFixed2(0)}`);
   assert.equal(counts.zen_tc, `Zen: ${signedFixed2(-1 / math.decksLeft)}`);
-  assert.equal(counts.omega_ii_tc, `Omega II: ${signedFixed2(-2 / math.decksLeft)}`);
-  assert.equal(counts.ace_tc, `Ace: ${signedFixed2(-1 / math.decksLeft)}`);
+  assert.equal(counts.omega_ii_tc, "Omega II: +0.00");
+  assert.notEqual(counts.omega_ii_tc, `Omega II: ${signedFixed2(-2 / math.decksLeft)}`);
+  assert.equal(counts.ace_tc, `Ace: ${signedFixed2(counts.acesLeft / math.decksLeft - 4)}`);
+  assert.equal(counts.ace_tc, "Ace: -0.12");
+  assert.notEqual(counts.ace_tc, `Ace: ${signedFixed2(-1 / math.decksLeft)}`);
   assert.notEqual(counts.ra.numeric, -0.875);
   assert.notEqual(counts.hilo_rc, 0);
 
@@ -338,9 +341,13 @@ test("GWT king is not a ten, and a second rank press stays on focus seat 1", () 
   assert.equal(counts.ra.numeric, math.ra);
   assert.notEqual(counts.ra.numeric, math.buggyRa);
   assert.equal(counts.zen_tc, `Zen: ${signedFixed2(-2 / math.decksLeft)}`);
-  assert.equal(counts.apc_tc, `APC: ${signedFixed2(-4 / math.decksLeft)}`);
+  assert.equal(counts.apc_tc, `APC: ${signedFixed2(-3 / math.decksLeft)}`);
+  assert.equal(counts.apc_tc, "APC: -0.38");
+  assert.notEqual(counts.apc_tc, `APC: ${signedFixed2(-4 / math.decksLeft)}`);
   assert.equal(counts.omega_ii_tc, `Omega II: ${signedFixed2(-2 / math.decksLeft)}`);
-  assert.equal(counts.ace_tc, `Ace: ${signedFixed2(0)}`);
+  assert.equal(counts.ace_tc, `Ace: ${signedFixed2(counts.acesLeft / math.decksLeft - 4)}`);
+  assert.equal(counts.ace_tc, "Ace: +0.01");
+  assert.notEqual(counts.ace_tc, "Ace: +0.00");
   assert.equal(remaining.remaining_by_rank.find((slice) => slice.rank === "K")?.count, 31);
   assert.equal(remaining.remaining_by_rank.find((slice) => slice.rank === "10")?.count, 32);
   assert.equal(remaining.remaining_by_rank.find((slice) => slice.rank === "Q")?.count, 32);

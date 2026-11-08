@@ -82,7 +82,6 @@ type CountFold = {
   totalRemaining: number;
   acesLeft: number;
   rc: Record<CountSystem, number>;
-  aceRC: number;
 };
 
 function zeroRc(): Record<CountSystem, number> {
@@ -123,7 +122,7 @@ function present(fold: CountFold): CountsInfoBar {
     apc_tc: `APC: ${signedFixed2(tc(fold.rc.APC))}`,
     zen_tc: `Zen: ${signedFixed2(tc(fold.rc.Zen))}`,
     omega_ii_tc: `Omega II: ${signedFixed2(tc(fold.rc.OmegaII))}`,
-    ace_tc: `Ace: ${signedFixed2(decksLeft > 0.01 ? fold.aceRC / decksLeft : 0)}`,
+    ace_tc: `Ace: ${signedFixed2(aceExcess(fold.acesLeft, decksLeft))}`,
     panel_chrome: PANEL_CHROME,
   };
 }
@@ -131,7 +130,8 @@ function present(fold: CountFold): CountsInfoBar {
 /**
  * Counts / info bar.
  * Shoe started resets P/D/RA and running counts.
- * Card observed applies that rank's tags, penetration, and (for an ace) RA + ace side count.
+ * Card observed applies that rank's tags, penetration, and (for an ace) RA.
+ * Ace side count is aces left per deck minus 4. It is not a −1 running tally.
  * Card withdrawn reverses that observe, including Omega II.
  * Hand completed does not — the shoe persists.
  */
@@ -147,17 +147,14 @@ export function projectCountsInfoBar(
         totalRemaining: event.decks * CARDS_PER_DECK,
         acesLeft: event.decks * ACES_PER_DECK,
         rc: zeroRc(),
-        aceRC: 0,
       };
     } else if (event.type === "card_observed" && fold) {
       fold.totalRemaining -= 1;
       for (const system of COUNT_SYSTEMS) {
         fold.rc[system] += countTag(system, event.rank);
       }
-      // Original addCard: seeing an ace decrements the ace side count.
       if (event.rank === "A") {
         fold.acesLeft -= 1;
-        fold.aceRC -= 1;
       }
     } else if (event.type === "card_withdrawn" && fold) {
       fold.totalRemaining += 1;
@@ -166,7 +163,6 @@ export function projectCountsInfoBar(
       }
       if (event.rank === "A") {
         fold.acesLeft += 1;
-        fold.aceRC += 1;
       }
     }
   }
@@ -176,6 +172,11 @@ export function projectCountsInfoBar(
   }
 
   return present(fold);
+}
+
+/** Aces remaining per deck, minus the 4-ace baseline. Empty shoe is 0. */
+function aceExcess(acesLeft: number, decksLeft: number): number {
+  return decksLeft > 0.01 ? acesLeft / decksLeft - 4 : 0;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { handleHttp, type HttpRequest } from "../http/handle.ts";
-import { createNewShoeShell } from "../ui/new-shoe-shell.ts";
+import { createNewShoeShell, type NewShoeShell } from "../ui/new-shoe-shell.ts";
 import {
   TABLE_STREAM,
   createInMemoryEventStore,
@@ -43,14 +43,11 @@ function idleSeatChrome(): string {
 }
 
 /**
- * NEW SHOE / NEXT HAND screen. The shell also emits the rank pad and the suit pad;
- * this page does not paint either pad.
+ * NEW SHOE / NEXT HAND screen. `#cardsGrid` and `#suitGrid` stay mounted.
+ * This page does not strip either pad.
  */
 export function presentNewShoeFragment(fragment: string): string {
-  const withoutPads = fragment
-    .replace(/<div id="cardsGrid">[\s\S]*?<\/div>\n?/, "")
-    .replace(/<div id="suitGrid">[\s\S]*?<\/div>\n?/, "");
-  return withoutPads
+  return fragment
     .replace(
       '<button id="shuffleBtn" type="button">NEW SHOE</button>\n<button id="nextHandBtn" type="button">NEXT HAND</button>',
       '<div class="topbar"><button class="btn shuffle" id="shuffleBtn" type="button">NEW SHOE</button><button class="btn next-hand" id="nextHandBtn" type="button">NEXT HAND</button></div>',
@@ -105,6 +102,8 @@ export function mountNewShoePage(
       const result = shell.pressNextHand();
       if (!result.rejected) paint();
     });
+    bindRankPad(root, shell, paint);
+    bindSuitPad(root, shell, paint);
     bindFocus(root);
     bindChartTips(root);
     root.setAttribute("data-screen", screen);
@@ -124,6 +123,30 @@ function publishTableRead(store: InMemoryEventStore): void {
     writable: false,
     value: readTable,
   });
+}
+
+/** Rank pad → POST observe-card on the focus seat. No suit is sent. */
+function bindRankPad(root: AppRoot, shell: NewShoeShell, paint: () => void): void {
+  for (const button of Array.from(root.querySelectorAll("#cardsGrid button"))) {
+    button.addEventListener("click", () => {
+      const rank = button.getAttribute("data-rank");
+      if (!rank) return;
+      const result = shell.pressRank(rank);
+      if (!result.rejected) paint();
+    });
+  }
+}
+
+/** Suit pad → POST set-suit on the focus seat. Rejected when no card is there. */
+function bindSuitPad(root: AppRoot, shell: NewShoeShell, paint: () => void): void {
+  for (const button of Array.from(root.querySelectorAll("#suitGrid button"))) {
+    button.addEventListener("click", () => {
+      const suit = button.getAttribute("data-suit");
+      if (!suit) return;
+      const result = shell.pressSuit(suit);
+      if (!result.rejected) paint();
+    });
+  }
 }
 
 /** Focus ring is UI chrome. Clicking a seat header does not append an event. */

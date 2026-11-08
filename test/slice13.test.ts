@@ -287,7 +287,9 @@ test("GWT Backspace withdraws the last registered card and restores counts and r
   const dealtRemaining = projectRemainingComposition(dealt);
   assert.equal(dealtCounts.acesLeft, 31);
   assert.equal(dealtCounts.hilo_rc, -1);
-  assert.notEqual(dealtCounts.omega_ii_tc, emptyCounts.omega_ii_tc);
+  assert.equal(dealtCounts.omega_ii_tc, emptyCounts.omega_ii_tc);
+  assert.notEqual(dealtCounts.ace_tc, emptyCounts.ace_tc);
+  assert.equal(dealtCounts.ace_tc, "Ace: -0.12");
   assert.equal(
     dealtRemaining.remaining_by_rank.find((slice) => slice.rank === "A")?.count,
     31,

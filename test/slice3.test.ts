@@ -195,6 +195,7 @@ test("GWT counts_after_observe: five updates P/D/RA and the count grid from slic
 
   assert.equal(COUNT_MAPS.APC["5"], 3);
   assert.notEqual(COUNT_MAPS.APC["5"], 2);
+  assert.equal(COUNT_MAPS.OmegaII["5"], 2);
   assert.equal(bar.hilo_rc, COUNT_MAPS.HiLo["5"]);
   assert.equal(bar.hilo_rc, 1);
   const tc = (rc: number) => (bar.decksLeft > 0.01 ? rc / bar.decksLeft : 0);
@@ -206,8 +207,11 @@ test("GWT counts_after_observe: five updates P/D/RA and the count grid from slic
   assert.equal(bar.zen_tc, `Zen: ${signedFixed2(tc(COUNT_MAPS.Zen["5"]))}`);
   assert.equal(bar.zen_tc, "Zen: +0.25");
   assert.equal(bar.omega_ii_tc, `Omega II: ${signedFixed2(tc(COUNT_MAPS.OmegaII["5"]))}`);
-  assert.equal(bar.omega_ii_tc, "Omega II: +0.38");
-  assert.equal(bar.ace_tc, "Ace: +0.00");
+  assert.equal(bar.omega_ii_tc, "Omega II: +0.25");
+  assert.notEqual(bar.omega_ii_tc, "Omega II: +0.38");
+  assert.equal(bar.ace_tc, `Ace: ${signedFixed2(bar.acesLeft / bar.decksLeft - 4)}`);
+  assert.equal(bar.ace_tc, "Ace: +0.01");
+  assert.notEqual(bar.ace_tc, "Ace: +0.00");
   assert.notEqual(bar.ace_tc, bar.ra.value);
 
   const dumped = JSON.stringify(bar);
@@ -216,7 +220,7 @@ test("GWT counts_after_observe: five updates P/D/RA and the count grid from slic
   assert.equal(dumped.includes("sidebet"), false);
 });
 
-test("GWT counts_after_observe ace: ace side count −1; RA uses aces left; Omega II ace is −2", () => {
+test("GWT counts_after_observe ace: ace excess vs 4 per deck; RA uses aces left; Omega II ace is 0", () => {
   const bar = projectCountsInfoBar([shoe(), observed("A", "D")]);
   const decksLeft = (DECKS * CARDS_PER_DECK - 1) / CARDS_PER_DECK;
 
@@ -226,8 +230,8 @@ test("GWT counts_after_observe ace: ace side count −1; RA uses aces left; Omeg
   assert.notEqual(bar.ra.numeric, bar.acesLeft / (4 * bar.decksLeft) - 1);
   assert.equal(bar.ra.value, "-0.88");
 
-  // Original addCard: aceRC -= 1. Not +1, and not Omega II's ace tag.
-  assert.equal(COUNT_MAPS.OmegaII.A, -2);
+  assert.equal(COUNT_MAPS.OmegaII.A, 0);
+  assert.notEqual(COUNT_MAPS.OmegaII.A, -2);
   assert.equal(COUNT_MAPS.APC.A, 0);
   assert.equal(COUNT_MAPS.HiLo.A, -1);
   assert.equal(bar.hilo_rc, -1);
@@ -237,10 +241,11 @@ test("GWT counts_after_observe ace: ace side count −1; RA uses aces left; Omeg
   assert.equal(bar.apc_tc, "APC: +0.00");
   assert.equal(bar.zen_tc, `Zen: ${signedFixed2(tc(COUNT_MAPS.Zen.A))}`);
   assert.equal(bar.zen_tc, `Zen: ${signedFixed2(tc(-1))}`);
-  assert.equal(bar.omega_ii_tc, `Omega II: ${signedFixed2(tc(-2))}`);
-  assert.equal(bar.omega_ii_tc, "Omega II: -0.25");
-  assert.equal(bar.ace_tc, `Ace: ${signedFixed2(tc(-1))}`);
-  assert.equal(bar.ace_tc, "Ace: -0.13");
+  assert.equal(bar.omega_ii_tc, "Omega II: +0.00");
+  assert.notEqual(bar.omega_ii_tc, "Omega II: -0.25");
+  assert.equal(bar.ace_tc, `Ace: ${signedFixed2(bar.acesLeft / bar.decksLeft - 4)}`);
+  assert.equal(bar.ace_tc, "Ace: -0.12");
+  assert.notEqual(bar.ace_tc, `Ace: ${signedFixed2(tc(-1))}`);
   assert.notEqual(bar.ace_tc, bar.omega_ii_tc);
   assert.notEqual(bar.ace_tc, bar.ra.value);
 });
