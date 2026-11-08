@@ -5,7 +5,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { parseHTML } from "linkedom";
 import { chromium, type Browser, type Page } from "playwright";
+import { mountNewShoePage } from "../src/pages/new-shoe-page.ts";
+import { TABLE_STREAM } from "../src/write/in-memory-store.ts";
 
 /**
  * Real-browser acceptance for the Pages artifact.
@@ -15,8 +18,9 @@ import { chromium, type Browser, type Page } from "playwright";
  *
  * Not claimed here: the HCL mid-shoe branch that double-clicks hero seat 1,
  * deals K♥/K♠, and clicks SPLIT. The live entry strips `#cardsGrid` and
- * `#suitGrid`, and does not paint SPLIT. Seat headers are idle chrome so
- * seat 2 can be focused before the first shoe.
+ * `#suitGrid`, and does not paint SPLIT. No seat wears `.active` until a
+ * click or NEW SHOE. Hero `your-seat` on seat 1 is original `buildTable`.
+ * `live_page_not_proven_8` stays open until SPLIT is reachable live.
  */
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -29,6 +33,8 @@ const SUITS = [
   { suit: "hearts", symbol: "♥" },
   { suit: "diamonds", symbol: "♦" },
 ] as const;
+
+const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;
 
 function contentType(file: string): string {
   if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
@@ -72,7 +78,21 @@ function startServer(): Promise<{ server: Server; origin: string }> {
   });
 }
 
-const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;
+test("felt_idle_no_events: idle paint leaves the event history empty", () => {
+  const { document } = parseHTML(readFileSync(join(root, "index.html"), "utf8"));
+  const store = mountNewShoePage(document, () => {
+    throw new Error("confirm must not run while the idle screen mounts");
+  });
+  const history = store.read(TABLE_STREAM);
+  assert.equal(
+    history.some((event) => event.type === "shoe_started"),
+    false,
+  );
+  assert.deepEqual(history, []);
+  const painted = document.querySelector("#app")?.innerHTML ?? "";
+  assert.match(painted, />RA: -0\.88</);
+  assert.equal(painted.includes("seat-round active"), false);
+});
 
 async function assertFullShoeChart(page: Page): Promise<void> {
   await page.getByText("P: 0.00%", { exact: true }).waitFor();
@@ -201,6 +221,13 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
     await assertFullShoeChart(page);
     assert.equal(await page.locator("[data-seat]").count(), 8);
     assert.equal(await page.locator(".hand-total").count(), 0);
+    assert.equal(await page.locator(".seat-round.active").count(), 0);
+    assert.equal(
+      await page
+        .locator('[data-seat="1"] .seat-round')
+        .evaluate((element) => element.classList.contains("your-seat")),
+      true,
+    );
 
     const seat2 = page.locator('[data-seat="2"] .seat-round');
     await seat2.waitFor();

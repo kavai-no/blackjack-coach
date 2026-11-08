@@ -179,8 +179,9 @@ export function projectCountsInfoBar(
 }
 
 /**
- * Original `DOMContentLoaded` calls `updateAll()` after `initRemaining()`,
- * before NEW SHOE. Same presenter as a fresh `shoe_started`. Not an event.
+ * Presentation only. The array is synthetic projector input for the idle
+ * screen (original `updateAll()` after `initRemaining()`, before NEW SHOE).
+ * Callers must not append it. No `shoe_started` is recorded.
  */
 export function freshShoeCountsInfoBar(): CountsInfoBar {
   return projectCountsInfoBar([{ type: "shoe_started", decks: SHOE_DECKS }]);

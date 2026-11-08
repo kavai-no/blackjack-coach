@@ -177,9 +177,8 @@ export function projectRemainingComposition(
 }
 
 /**
- * Original `initCombinedChart` draws 32s and 104s on load
- * (`modules/charting.js` initial rank/suit data), before NEW SHOE.
- * Same presenter as a fresh `shoe_started`. Not an event.
+ * Presentation only. Synthetic projector input for the idle donut
+ * (`charting.js` initial 32s and 104s). Callers must not append it.
  */
 export function freshShoeRemaining(): RemainingComposition {
   return projectRemainingComposition([

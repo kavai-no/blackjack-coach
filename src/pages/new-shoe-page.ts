@@ -1,6 +1,9 @@
 import { handleHttp, type HttpRequest } from "../http/handle.ts";
 import { createNewShoeShell } from "../ui/new-shoe-shell.ts";
-import { createInMemoryEventStore } from "../write/in-memory-store.ts";
+import {
+  createInMemoryEventStore,
+  type InMemoryEventStore,
+} from "../write/in-memory-store.ts";
 
 export type Confirm = (message: string) => boolean;
 
@@ -29,10 +32,10 @@ type PageDocument = {
 
 const IDLE_SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"] as const;
 
-/** Seats exist before any shoe so the player can move the focus ring. Not a projection. */
+/** Seats exist before any shoe. Hero class only. Focus ring waits for a click or NEW SHOE. */
 function idleSeatChrome(): string {
   return IDLE_SEATS.map((seat) => {
-    const round = seat === "1" ? "seat-round active your-seat" : "seat-round";
+    const round = seat === "1" ? "seat-round your-seat" : "seat-round";
     return `<section class="seat" data-seat="${seat}"><div class="${round}">${seat}</div><div class="hand" id="hand-${seat}"></div></section>`;
   }).join("");
 }
@@ -70,7 +73,10 @@ export function presentNewShoeFragment(fragment: string): string {
 }
 
 /** Mount the existing shell. Confirm and POST stay inside the shell. */
-export function mountNewShoePage(document: PageDocument, confirm: Confirm): void {
+export function mountNewShoePage(
+  document: PageDocument,
+  confirm: Confirm,
+): InMemoryEventStore {
   const root = document.querySelector("#app");
   if (!root) {
     throw new Error("#app missing");
@@ -96,6 +102,7 @@ export function mountNewShoePage(document: PageDocument, confirm: Confirm): void
   };
 
   paint();
+  return store;
 }
 
 /** Focus ring is UI chrome. Clicking a seat header does not append an event. */

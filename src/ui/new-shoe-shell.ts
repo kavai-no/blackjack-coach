@@ -310,7 +310,7 @@ function isPadSuit(value: string): value is Suit {
 }
 
 function renderIdle(): string {
-  // charting.js initial 32/104 draw + strategy.js updateAll(), before shuffleBtn.
+  // Idle chart and info bar. freshShoe* is not written to the store.
   return frame(
     `<div id="table"></div>\n${renderInfo(freshShoeCountsInfoBar())}\n${renderDonut(freshShoeRemaining())}`,
   );
