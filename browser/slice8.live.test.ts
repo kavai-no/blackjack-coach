@@ -127,10 +127,10 @@ async function assertFullShoeChart(page: Page): Promise<void> {
     await ra.evaluate((element) => getComputedStyle(element).color),
     "rgb(239, 68, 68)",
   );
-  await page.getByText("Hi-Lo: 0 / +0.00", { exact: true }).waitFor();
-  await page.getByText("APC: +0.00", { exact: true }).waitFor();
-  await page.getByText("Zen: +0.00", { exact: true }).waitFor();
-  await page.getByText("Omega II: +0.00", { exact: true }).waitFor();
+  await page.getByText("Hi-Lo: 0 / 0.00", { exact: true }).waitFor();
+  await page.getByText("APC: 0.00", { exact: true }).waitFor();
+  await page.getByText("Zen: 0.00", { exact: true }).waitFor();
+  await page.getByText("Omega II: 0.00", { exact: true }).waitFor();
   await page.getByText("Ace: 0.00", { exact: true }).waitFor();
 
   const labels = page.locator("#combinedChart .rank-label");

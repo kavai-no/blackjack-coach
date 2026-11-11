@@ -56,10 +56,8 @@ function ackBody(response: HttpResponse) {
 }
 
 /** Same display rounding as the info bar. Not a second count engine. */
-function signedFixed2(n: number): string {
-  const abs = Math.abs(n).toFixed(2);
-  if (n < 0 && Number(abs) !== 0) return `-${abs}`;
-  return `+${abs}`;
+function fixed2(n: number): string {
+  return n.toFixed(2);
 }
 
 /** Correct empty-shoe-relative formulas. Not acesLeft/(4·decksLeft)−1. */
@@ -234,20 +232,20 @@ test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, p
   assert.equal(counts.decksLeft, math.decksLeft);
   assert.equal(counts.ra.numeric, math.ra);
   assert.notEqual(counts.ra.numeric, math.buggyRa);
-  assert.equal(counts.ra.value, signedFixed2(math.ra));
+  assert.equal(counts.ra.value, fixed2(math.ra));
   assert.equal(counts.ra.className, "negative");
   assert.equal(counts.ra.colour, "#ef4444");
   assert.equal(counts.penetration, `P: ${math.penetration}%`);
   assert.equal(counts.decks_left, `D: ${math.decksLeft.toFixed(2)}`);
   assert.equal(counts.hilo_rc, -1);
-  assert.equal(counts.hilo_display, `Hi-Lo: -1 / ${signedFixed2(-1 / math.decksLeft)}`);
-  assert.equal(counts.apc_tc, `APC: ${signedFixed2(0)}`);
-  assert.equal(counts.zen_tc, `Zen: ${signedFixed2(-1 / math.decksLeft)}`);
-  assert.equal(counts.omega_ii_tc, "Omega II: +0.00");
-  assert.notEqual(counts.omega_ii_tc, `Omega II: ${signedFixed2(-2 / math.decksLeft)}`);
-  assert.equal(counts.ace_tc, `Ace: ${signedFixed2(counts.acesLeft / math.decksLeft - 4)}`);
+  assert.equal(counts.hilo_display, `Hi-Lo: -1 / ${fixed2(-1 / math.decksLeft)}`);
+  assert.equal(counts.apc_tc, `APC: ${fixed2(0)}`);
+  assert.equal(counts.zen_tc, `Zen: ${fixed2(-1 / math.decksLeft)}`);
+  assert.equal(counts.omega_ii_tc, "Omega II: 0.00");
+  assert.notEqual(counts.omega_ii_tc, `Omega II: ${fixed2(-2 / math.decksLeft)}`);
+  assert.equal(counts.ace_tc, `Ace: ${fixed2(counts.acesLeft / math.decksLeft - 4)}`);
   assert.equal(counts.ace_tc, "Ace: -0.12");
-  assert.notEqual(counts.ace_tc, `Ace: ${signedFixed2(-1 / math.decksLeft)}`);
+  assert.notEqual(counts.ace_tc, `Ace: ${fixed2(-1 / math.decksLeft)}`);
   assert.notEqual(counts.ra.numeric, -0.875);
   assert.notEqual(counts.hilo_rc, 0);
 
@@ -341,11 +339,11 @@ test("GWT king is not a ten, and a second rank press stays on focus seat 1", () 
   assert.equal(counts.hilo_rc, -1);
   assert.equal(counts.ra.numeric, math.ra);
   assert.notEqual(counts.ra.numeric, math.buggyRa);
-  assert.equal(counts.zen_tc, `Zen: ${signedFixed2(-2 / math.decksLeft)}`);
-  assert.equal(counts.apc_tc, `APC: ${signedFixed2(-3 / math.decksLeft)}`);
+  assert.equal(counts.zen_tc, `Zen: ${fixed2(-2 / math.decksLeft)}`);
+  assert.equal(counts.apc_tc, `APC: ${fixed2(-3 / math.decksLeft)}`);
   assert.equal(counts.apc_tc, "APC: -0.38");
-  assert.notEqual(counts.apc_tc, `APC: ${signedFixed2(-4 / math.decksLeft)}`);
-  assert.equal(counts.omega_ii_tc, `Omega II: ${signedFixed2(-2 / math.decksLeft)}`);
+  assert.notEqual(counts.apc_tc, `APC: ${fixed2(-4 / math.decksLeft)}`);
+  assert.equal(counts.omega_ii_tc, `Omega II: ${fixed2(-2 / math.decksLeft)}`);
   assert.equal(counts.ace_tc, `Ace: ${(counts.acesLeft / math.decksLeft - 4).toFixed(2)}`);
   assert.equal(counts.ace_tc, "Ace: 0.01");
   assert.notEqual(counts.ace_tc, "Ace: +0.01");

@@ -88,16 +88,9 @@ function zeroRc(): Record<CountSystem, number> {
   return { HiLo: 0, APC: 0, Zen: 0, OmegaII: 0 };
 }
 
-/** Signed two-decimal count, matching the info-bar contract (`+0.00`). */
-function signedFixed2(n: number): string {
-  const abs = Math.abs(n).toFixed(2);
-  if (n < 0 && Number(abs) !== 0) return `-${abs}`;
-  return `+${abs}`;
-}
-
 /**
  * Original `aceTC.toFixed(2)` (`strategy.js`), including the idle shoe.
- * No forced plus. Other counts keep `signedFixed2`.
+ * No forced plus. Hi-Lo, APC, Zen, Omega II, and RA use the same rounding.
  */
 function aceLabel(excess: number): string {
   return `Ace: ${excess.toFixed(2)}`;
@@ -119,17 +112,17 @@ function present(fold: CountFold): CountsInfoBar {
     acesLeft: fold.acesLeft,
     ra: {
       label: "RA:",
-      value: signedFixed2(ra),
+      value: ra.toFixed(2),
       numeric: ra,
       colour: negative ? "#ef4444" : "#22c55e",
       className: negative ? "negative" : "",
     },
     hilo_rc: fold.rc.HiLo,
-    hilo_tc: signedFixed2(hiloTc),
-    hilo_display: `Hi-Lo: ${fold.rc.HiLo} / ${signedFixed2(hiloTc)}`,
-    apc_tc: `APC: ${signedFixed2(tc(fold.rc.APC))}`,
-    zen_tc: `Zen: ${signedFixed2(tc(fold.rc.Zen))}`,
-    omega_ii_tc: `Omega II: ${signedFixed2(tc(fold.rc.OmegaII))}`,
+    hilo_tc: hiloTc.toFixed(2),
+    hilo_display: `Hi-Lo: ${fold.rc.HiLo} / ${hiloTc.toFixed(2)}`,
+    apc_tc: `APC: ${tc(fold.rc.APC).toFixed(2)}`,
+    zen_tc: `Zen: ${tc(fold.rc.Zen).toFixed(2)}`,
+    omega_ii_tc: `Omega II: ${tc(fold.rc.OmegaII).toFixed(2)}`,
     ace_tc: aceLabel(aceExcess(fold.acesLeft, decksLeft)),
     panel_chrome: PANEL_CHROME,
   };

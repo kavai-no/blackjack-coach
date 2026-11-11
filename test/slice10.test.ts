@@ -85,7 +85,7 @@ function assertEmptyShoe(html: string) {
     counts.ace_tc,
     "P: 0.00%",
     "D: 8.00",
-    "Hi-Lo: 0 / +0.00",
+    "Hi-Lo: 0 / 0.00",
   ]) {
     assert.equal(html.includes(text), true, text);
   }

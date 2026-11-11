@@ -335,3 +335,48 @@ test("felt total 21: K then A, hand-total colour is rgb(0 255 245)", async () =>
     });
   }
 });
+
+test("felt_pick_rank five: Hi-Lo true count is positive and has no plus", async () => {
+  buildDist();
+  const { server, origin } = await startServer();
+  let browser: Browser | undefined;
+  try {
+    const opened = await openLive(origin);
+    browser = opened.browser;
+    const page = opened.page;
+    await page.getByRole("button", { name: "NEW SHOE" }).click();
+    await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
+    await page.locator('#cardsGrid button[data-rank="5"]').click();
+    await page.getByText("5♠", { exact: true }).waitFor();
+
+    const decksLeft = Math.max((8 * 52 - 1) / 52, 0.01);
+    const trueCount = (rc: number) =>
+      (decksLeft > 0.01 ? rc / decksLeft : 0).toFixed(2);
+    const hiLo = trueCount(1);
+    assert.equal(hiLo.startsWith("+"), false);
+    assert.equal(Number(hiLo) > 0, true);
+    assert.equal((await page.locator("#hiLo").innerText()).trim(), `Hi-Lo: 1 / ${hiLo}`);
+    assert.equal((await page.locator("#apcTC").innerText()).trim(), `APC: ${trueCount(3)}`);
+    assert.equal((await page.locator("#zenTC").innerText()).trim(), `Zen: ${trueCount(2)}`);
+    assert.equal(
+      (await page.locator("#omegaIITC").innerText()).trim(),
+      `Omega II: ${trueCount(2)}`,
+    );
+    assert.equal(
+      /[+]/.test(
+        [
+          await page.locator("#hiLo").innerText(),
+          await page.locator("#apcTC").innerText(),
+          await page.locator("#zenTC").innerText(),
+          await page.locator("#omegaIITC").innerText(),
+        ].join(" "),
+      ),
+      false,
+    );
+  } finally {
+    await browser?.close();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
