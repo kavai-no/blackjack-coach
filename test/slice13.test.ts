@@ -379,13 +379,13 @@ test("GWT Backspace withdraws the last registered card and restores counts and r
   for (const text of [
     counts.penetration,
     counts.decks_left,
-    `${counts.ra.label} ${counts.ra.numeric}`,
+    `${counts.ra.label} ${counts.ra.value}`,
     counts.hilo_display,
     counts.apc_tc,
     counts.zen_tc,
     counts.omega_ii_tc,
     counts.ace_tc,
-    "RA: -0.875",
+    "RA: -0.88",
     "Omega II: +0.00",
   ]) {
     assert.equal(html.includes(text), true, text);

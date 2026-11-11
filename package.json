@@ -4,12 +4,14 @@
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test:browser": "node --experimental-strip-types --test browser/slice8.live.test.ts",
     "build": "node scripts/build-pages.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
     "esbuild": "^0.28.2",
     "linkedom": "^0.18.15",
+    "playwright": "^1.56.1",
     "typescript": "^5.9.3"
   }
 }

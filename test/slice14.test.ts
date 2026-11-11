@@ -383,7 +383,7 @@ test("GWT NEXT HAND clears split piles and keeps the shoe; a second press still 
   for (const text of [
     counts.penetration,
     counts.decks_left,
-    `${counts.ra.label} ${counts.ra.numeric}`,
+    `${counts.ra.label} ${counts.ra.value}`,
     counts.hilo_display,
     counts.apc_tc,
     counts.zen_tc,
@@ -462,7 +462,7 @@ test("mounted page keeps #nextHandBtn in the topbar and clicks it only through t
   const next = document.querySelector("#nextHandBtn");
   click(next);
   assert.deepEqual(seen, []);
-  assert.equal((document.querySelector("#app")?.innerHTML ?? "").includes("data-seat"), false);
+  assert.equal(document.querySelector("#app")?.innerHTML ?? "", idle);
 
   const shoe = document.querySelector("#shuffleBtn");
   click(shoe);
