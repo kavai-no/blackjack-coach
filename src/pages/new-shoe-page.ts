@@ -108,6 +108,9 @@ export function mountNewShoePage(
     });
     bindRankPad(root, shell, paint, random);
     bindSuitPad(root, shell, paint);
+    bindSplit(root, shell, paint, () => {
+      screen = "felt_split";
+    });
     bindFocus(root);
     bindChartTips(root);
     root.setAttribute("data-screen", screen);
@@ -168,6 +171,22 @@ function rankSuitCells(html: string): RankSuitCount[] {
   if (!json) throw new Error("remaining view missing");
   const view = JSON.parse(json) as { remaining_by_rank_suit?: RankSuitCount[] };
   return view.remaining_by_rank_suit ?? [];
+}
+
+/** Hero `#splitBtn-1` → split hand. The button is absent unless felt shows it. */
+function bindSplit(
+  root: AppRoot,
+  shell: NewShoeShell,
+  paint: () => void,
+  showSplit: () => void,
+): void {
+  root.querySelector("#splitBtn-1")?.addEventListener("click", () => {
+    const result = shell.pressSplit();
+    if (!result.rejected) {
+      showSplit();
+      paint();
+    }
+  });
 }
 
 /** Suit pad → POST set-suit on the focus seat. Rejected when no card is there. */
