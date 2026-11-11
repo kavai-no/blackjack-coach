@@ -346,9 +346,9 @@ test("GWT king is not a ten, and a second rank press stays on focus seat 1", () 
   assert.equal(counts.apc_tc, "APC: -0.38");
   assert.notEqual(counts.apc_tc, `APC: ${signedFixed2(-4 / math.decksLeft)}`);
   assert.equal(counts.omega_ii_tc, `Omega II: ${signedFixed2(-2 / math.decksLeft)}`);
-  assert.equal(counts.ace_tc, `Ace: ${signedFixed2(counts.acesLeft / math.decksLeft - 4)}`);
-  assert.equal(counts.ace_tc, "Ace: +0.01");
-  assert.notEqual(counts.ace_tc, "Ace: +0.00");
+  assert.equal(counts.ace_tc, `Ace: ${(counts.acesLeft / math.decksLeft - 4).toFixed(2)}`);
+  assert.equal(counts.ace_tc, "Ace: 0.01");
+  assert.notEqual(counts.ace_tc, "Ace: +0.01");
   assert.equal(remaining.remaining_by_rank.find((slice) => slice.rank === "K")?.count, 31);
   assert.equal(remaining.remaining_by_rank.find((slice) => slice.rank === "10")?.count, 32);
   assert.equal(remaining.remaining_by_rank.find((slice) => slice.rank === "Q")?.count, 32);

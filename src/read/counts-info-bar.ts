@@ -95,6 +95,19 @@ function signedFixed2(n: number): string {
   return `+${abs}`;
 }
 
+/**
+ * Original `aceTC.toFixed(2)` once a card has updated the shoe.
+ * The idle/static zero stays `+0.00` (slice 8, before any card).
+ */
+function aceLabel(excess: number, dealt: number): string {
+  const text = dealt === 0 ? signedFixed2(excess) : excess.toFixed(2);
+  return `Ace: ${text}`;
+}
+
+function cardsDealt(fold: CountFold): number {
+  return fold.decks * CARDS_PER_DECK - fold.totalRemaining;
+}
+
 function present(fold: CountFold): CountsInfoBar {
   const decksLeft = Math.max(fold.totalRemaining / CARDS_PER_DECK, 0.01);
   const penetration = ((1 - fold.totalRemaining / (fold.decks * CARDS_PER_DECK)) * 100).toFixed(2);
@@ -122,7 +135,7 @@ function present(fold: CountFold): CountsInfoBar {
     apc_tc: `APC: ${signedFixed2(tc(fold.rc.APC))}`,
     zen_tc: `Zen: ${signedFixed2(tc(fold.rc.Zen))}`,
     omega_ii_tc: `Omega II: ${signedFixed2(tc(fold.rc.OmegaII))}`,
-    ace_tc: `Ace: ${signedFixed2(aceExcess(fold.acesLeft, decksLeft))}`,
+    ace_tc: aceLabel(aceExcess(fold.acesLeft, decksLeft), cardsDealt(fold)),
     panel_chrome: PANEL_CHROME,
   };
 }

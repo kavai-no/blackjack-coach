@@ -106,6 +106,12 @@ async function openLive(origin: string): Promise<{ browser: Browser; page: Page 
   return { browser, page };
 }
 
+async function handTotalColour(page: Page): Promise<string> {
+  return page.locator('[data-seat="1"] .hand-total').evaluate((element) => {
+    return getComputedStyle(element).color;
+  });
+}
+
 async function hoverTip(page: Page, selector: string): Promise<string> {
   await page.locator(selector).hover();
   return (await page.locator("#combinedChart .d3-tooltip").innerText()).trim();
@@ -184,6 +190,7 @@ test("felt_pick_rank: NEW SHOE, click K, fixture 0 draws K♠", async () => {
       (await page.locator('[data-seat="1"] .hand-total').innerText()).trim(),
       "Total: 10",
     );
+    assert.equal(await handTotalColour(page), "rgb(255, 212, 63)");
     for (const seat of ["D", "7", "6", "5", "4", "3", "2"]) {
       assert.equal((await page.locator(`#hand-${seat}`).innerText()).trim(), "");
     }
@@ -195,7 +202,7 @@ test("felt_pick_rank: NEW SHOE, click K, fixture 0 draws K♠", async () => {
     assert.equal((await page.locator("#apcTC").innerText()).trim(), "APC: -0.38");
     assert.equal((await page.locator("#zenTC").innerText()).trim(), "Zen: -0.25");
     assert.equal((await page.locator("#omegaIITC").innerText()).trim(), "Omega II: -0.25");
-    assert.equal((await page.locator("#aceTC").innerText()).trim(), "Ace: +0.01");
+    assert.equal((await page.locator("#aceTC").innerText()).trim(), "Ace: 0.01");
 
     for (const rank of ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q"]) {
       assert.equal((await rankLabel(page, rank).textContent())?.trim(), "32", rank);
@@ -260,6 +267,7 @@ test("felt_set_suit: hearts corrects the drawn K♠ to K♥", async () => {
       (await page.locator('[data-seat="1"] .hand-total').innerText()).trim(),
       "Total: 10",
     );
+    assert.equal(await handTotalColour(page), "rgb(255, 212, 63)");
     assert.equal((await rankLabel(page, "K").textContent())?.trim(), "31");
     for (const rank of ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q"]) {
       assert.equal((await rankLabel(page, rank).textContent())?.trim(), "32", rank);
@@ -287,7 +295,7 @@ test("felt_set_suit: hearts corrects the drawn K♠ to K♥", async () => {
     assert.equal((await page.locator("#apcTC").innerText()).trim(), "APC: -0.38");
     assert.equal((await page.locator("#zenTC").innerText()).trim(), "Zen: -0.25");
     assert.equal((await page.locator("#omegaIITC").innerText()).trim(), "Omega II: -0.25");
-    assert.equal((await page.locator("#aceTC").innerText()).trim(), "Ace: +0.01");
+    assert.equal((await page.locator("#aceTC").innerText()).trim(), "Ace: 0.01");
   } finally {
     await browser?.close();
     await new Promise<void>((resolve, reject) => {

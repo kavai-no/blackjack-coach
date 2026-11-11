@@ -121,14 +121,14 @@ test("GWT felt after observe: rank on that seat, suit unset, order D,7..1", () =
   );
 });
 
-test("hand totals use blackjack values: soft ace, 21 cyan, ≥17 green, bust red", () => {
+test("hand totals use blackjack values: soft ace, 21 cyan-blue, ≥17 green, bust red", () => {
   const twentyOne = projectFeltTable([
     shoe(),
     observed("A", "1"),
     observed("K", "1"),
   ]);
   assert.deepEqual(twentyOne.hand_totals, [
-    { seat: "1", total: 21, colour: "cyan", label: "Total: 21" },
+    { seat: "1", total: 21, colour: "rgb(0 255 245)", label: "Total: 21" },
   ]);
 
   const seventeen = projectFeltTable([
@@ -209,9 +209,9 @@ test("GWT counts_after_observe: five updates P/D/RA and the count grid from slic
   assert.equal(bar.omega_ii_tc, `Omega II: ${signedFixed2(tc(COUNT_MAPS.OmegaII["5"]))}`);
   assert.equal(bar.omega_ii_tc, "Omega II: +0.25");
   assert.notEqual(bar.omega_ii_tc, "Omega II: +0.38");
-  assert.equal(bar.ace_tc, `Ace: ${signedFixed2(bar.acesLeft / bar.decksLeft - 4)}`);
-  assert.equal(bar.ace_tc, "Ace: +0.01");
-  assert.notEqual(bar.ace_tc, "Ace: +0.00");
+  assert.equal(bar.ace_tc, `Ace: ${(bar.acesLeft / bar.decksLeft - 4).toFixed(2)}`);
+  assert.equal(bar.ace_tc, "Ace: 0.01");
+  assert.notEqual(bar.ace_tc, "Ace: +0.01");
   assert.notEqual(bar.ace_tc, bar.ra.value);
 
   const dumped = JSON.stringify(bar);

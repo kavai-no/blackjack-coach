@@ -25,8 +25,8 @@ export type HandTotal = {
   /** Set on a split pile. Absent on an unsplit seat. */
   hand?: "A" | "B";
   total: number;
-  /** bust=#ef4444; 21=cyan; ≥17=#22c55e; else=#ffd43f */
-  colour: "#ef4444" | "cyan" | "#22c55e" | "#ffd43f";
+  /** bust=#ef4444; 21=rgb(0 255 245); ≥17=#22c55e; else=#ffd43f */
+  colour: "#ef4444" | "rgb(0 255 245)" | "#22c55e" | "#ffd43f";
   label: string;
 };
 
@@ -90,7 +90,7 @@ function blackjackTotal(ranks: readonly Rank[]): number {
 
 function totalColour(total: number): HandTotal["colour"] {
   if (total > 21) return "#ef4444";
-  if (total === 21) return "cyan";
+  if (total === 21) return "rgb(0 255 245)";
   if (total >= 17) return "#22c55e";
   return "#ffd43f";
 }
