@@ -21,8 +21,8 @@ const RANKS: Rank[] = [
   "K",
 ];
 
-/** Literal copy of modules/state.js `state.map`. */
-const ORIGINAL_MAPS = {
+/** Hi-Lo and Zen match the balanced maps. APC is Uston. Omega II is standard. */
+const LOCKED_MAPS = {
   HiLo: {
     A: -1,
     "2": 1,
@@ -41,17 +41,17 @@ const ORIGINAL_MAPS = {
   APC: {
     A: 0,
     "2": 1,
-    "3": 1,
+    "3": 2,
     "4": 2,
     "5": 3,
     "6": 2,
     "7": 2,
     "8": 1,
-    "9": -3,
-    "10": -4,
-    J: -4,
-    Q: -4,
-    K: -4,
+    "9": -1,
+    "10": -3,
+    J: -3,
+    Q: -3,
+    K: -3,
   },
   Zen: {
     A: -1,
@@ -69,14 +69,14 @@ const ORIGINAL_MAPS = {
     K: -2,
   },
   OmegaII: {
-    A: -2,
+    A: 0,
     "2": 1,
     "3": 1,
     "4": 2,
-    "5": 3,
+    "5": 2,
     "6": 2,
     "7": 1,
-    "8": -1,
+    "8": 0,
     "9": -1,
     "10": -2,
     J: -2,
@@ -100,18 +100,32 @@ test("RA empty-shoe assertion uses -0.875 from acesLeft/(32·decksLeft)−1", ()
   assert.notEqual(bar.ra, 0);
 });
 
-test("count maps match modules/state.js; APC five is +3", () => {
+test("count maps are Uston APC and standard Omega II; J/Q/K stay distinct", () => {
   assert.equal(COUNT_MAPS.APC["5"], 3);
   assert.notEqual(COUNT_MAPS.APC["5"], 2);
-  assert.deepEqual(COUNT_MAPS, ORIGINAL_MAPS);
+  assert.equal(COUNT_MAPS.APC["10"], -3);
+  assert.notEqual(COUNT_MAPS.APC["10"], -4);
+  assert.equal(COUNT_MAPS.APC["3"], 2);
+  assert.equal(COUNT_MAPS.APC["9"], -1);
+  assert.equal(COUNT_MAPS.OmegaII.A, 0);
+  assert.notEqual(COUNT_MAPS.OmegaII.A, -2);
+  assert.equal(COUNT_MAPS.OmegaII["5"], 2);
+  assert.notEqual(COUNT_MAPS.OmegaII["5"], 3);
+  assert.equal(COUNT_MAPS.OmegaII["8"], 0);
+  assert.notEqual(COUNT_MAPS.OmegaII["8"], -1);
+  assert.equal(COUNT_MAPS.APC.J, COUNT_MAPS.APC["10"]);
+  assert.equal(COUNT_MAPS.APC.Q, COUNT_MAPS.APC["10"]);
+  assert.equal(COUNT_MAPS.APC.K, COUNT_MAPS.APC["10"]);
+  assert.equal(COUNT_MAPS.OmegaII.J, COUNT_MAPS.OmegaII["10"]);
+  assert.notEqual(COUNT_MAPS.HiLo.K, COUNT_MAPS.HiLo["5"]);
+  assert.equal("ES3" in COUNT_MAPS, false);
+  assert.deepEqual(COUNT_MAPS, LOCKED_MAPS);
   for (const rank of RANKS) {
-    assert.equal(COUNT_MAPS.HiLo[rank], ORIGINAL_MAPS.HiLo[rank]);
-    assert.equal(COUNT_MAPS.Zen[rank], ORIGINAL_MAPS.Zen[rank]);
-    assert.equal(COUNT_MAPS.OmegaII[rank], ORIGINAL_MAPS.OmegaII[rank]);
-    assert.equal(COUNT_MAPS.APC[rank], ORIGINAL_MAPS.APC[rank]);
+    assert.equal(COUNT_MAPS.HiLo[rank], LOCKED_MAPS.HiLo[rank]);
+    assert.equal(COUNT_MAPS.Zen[rank], LOCKED_MAPS.Zen[rank]);
+    assert.equal(COUNT_MAPS.OmegaII[rank], LOCKED_MAPS.OmegaII[rank]);
+    assert.equal(COUNT_MAPS.APC[rank], LOCKED_MAPS.APC[rank]);
   }
-  assert.equal(COUNT_MAPS.OmegaII.A, -2);
-  assert.equal(COUNT_MAPS.OmegaII["8"], -1);
 });
 
 test("piled cards expose mini_card_face", () => {

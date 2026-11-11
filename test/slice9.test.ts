@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { RANKS } from "../src/counting/maps.ts";
+import { RANKS, SUITS } from "../src/counting/maps.ts";
+import { pickSuit } from "../src/felt/pick-suit.ts";
 import {
   COUNTS_PATH,
   FELT_PATH,
@@ -55,10 +56,8 @@ function ackBody(response: HttpResponse) {
 }
 
 /** Same display rounding as the info bar. Not a second count engine. */
-function signedFixed2(n: number): string {
-  const abs = Math.abs(n).toFixed(2);
-  if (n < 0 && Number(abs) !== 0) return `-${abs}`;
-  return `+${abs}`;
+function fixed2(n: number): string {
+  return n.toFixed(2);
 }
 
 /** Correct empty-shoe-relative formulas. Not acesLeft/(4·decksLeft)−1. */
@@ -233,17 +232,20 @@ test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, p
   assert.equal(counts.decksLeft, math.decksLeft);
   assert.equal(counts.ra.numeric, math.ra);
   assert.notEqual(counts.ra.numeric, math.buggyRa);
-  assert.equal(counts.ra.value, signedFixed2(math.ra));
+  assert.equal(counts.ra.value, fixed2(math.ra));
   assert.equal(counts.ra.className, "negative");
   assert.equal(counts.ra.colour, "#ef4444");
   assert.equal(counts.penetration, `P: ${math.penetration}%`);
   assert.equal(counts.decks_left, `D: ${math.decksLeft.toFixed(2)}`);
   assert.equal(counts.hilo_rc, -1);
-  assert.equal(counts.hilo_display, `Hi-Lo: -1 / ${signedFixed2(-1 / math.decksLeft)}`);
-  assert.equal(counts.apc_tc, `APC: ${signedFixed2(0)}`);
-  assert.equal(counts.zen_tc, `Zen: ${signedFixed2(-1 / math.decksLeft)}`);
-  assert.equal(counts.omega_ii_tc, `Omega II: ${signedFixed2(-2 / math.decksLeft)}`);
-  assert.equal(counts.ace_tc, `Ace: ${signedFixed2(-1 / math.decksLeft)}`);
+  assert.equal(counts.hilo_display, `Hi-Lo: -1 / ${fixed2(-1 / math.decksLeft)}`);
+  assert.equal(counts.apc_tc, `APC: ${fixed2(0)}`);
+  assert.equal(counts.zen_tc, `Zen: ${fixed2(-1 / math.decksLeft)}`);
+  assert.equal(counts.omega_ii_tc, "Omega II: 0.00");
+  assert.notEqual(counts.omega_ii_tc, `Omega II: ${fixed2(-2 / math.decksLeft)}`);
+  assert.equal(counts.ace_tc, `Ace: ${fixed2(counts.acesLeft / math.decksLeft - 4)}`);
+  assert.equal(counts.ace_tc, "Ace: -0.12");
+  assert.notEqual(counts.ace_tc, `Ace: ${fixed2(-1 / math.decksLeft)}`);
   assert.notEqual(counts.ra.numeric, -0.875);
   assert.notEqual(counts.hilo_rc, 0);
 
@@ -337,10 +339,14 @@ test("GWT king is not a ten, and a second rank press stays on focus seat 1", () 
   assert.equal(counts.hilo_rc, -1);
   assert.equal(counts.ra.numeric, math.ra);
   assert.notEqual(counts.ra.numeric, math.buggyRa);
-  assert.equal(counts.zen_tc, `Zen: ${signedFixed2(-2 / math.decksLeft)}`);
-  assert.equal(counts.apc_tc, `APC: ${signedFixed2(-4 / math.decksLeft)}`);
-  assert.equal(counts.omega_ii_tc, `Omega II: ${signedFixed2(-2 / math.decksLeft)}`);
-  assert.equal(counts.ace_tc, `Ace: ${signedFixed2(0)}`);
+  assert.equal(counts.zen_tc, `Zen: ${fixed2(-2 / math.decksLeft)}`);
+  assert.equal(counts.apc_tc, `APC: ${fixed2(-3 / math.decksLeft)}`);
+  assert.equal(counts.apc_tc, "APC: -0.38");
+  assert.notEqual(counts.apc_tc, `APC: ${fixed2(-4 / math.decksLeft)}`);
+  assert.equal(counts.omega_ii_tc, `Omega II: ${fixed2(-2 / math.decksLeft)}`);
+  assert.equal(counts.ace_tc, `Ace: ${(counts.acesLeft / math.decksLeft - 4).toFixed(2)}`);
+  assert.equal(counts.ace_tc, "Ace: 0.01");
+  assert.notEqual(counts.ace_tc, "Ace: +0.01");
   assert.equal(remaining.remaining_by_rank.find((slice) => slice.rank === "K")?.count, 31);
   assert.equal(remaining.remaining_by_rank.find((slice) => slice.rank === "10")?.count, 32);
   assert.equal(remaining.remaining_by_rank.find((slice) => slice.rank === "Q")?.count, 32);
@@ -455,4 +461,32 @@ test("observe-card boundary and shell do not re-derive counts or open a network 
   assert.equal(shellSrc.includes("COUNT_MAPS"), false);
   assert.equal(shellSrc.includes("node:http"), false);
   assert.equal(shellSrc.includes("createServer"), false);
+
+  const pageSrc = readFileSync(
+    new URL("../src/pages/new-shoe-page.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(pageSrc, /pickSuit\(/);
+  assert.match(pageSrc, /pickSuitRandom/);
+  assert.equal(pageSrc.includes("projectRemainingComposition"), false);
+  assert.equal(pageSrc.includes("Math.random"), true);
+});
+
+test("pickSuit walks original suit order against the live rank×suit counts", () => {
+  const full = projectRemainingComposition([
+    { type: "shoe_started", decks: 8 },
+  ]).remaining_by_rank_suit;
+  assert.deepEqual(SUITS, ["spades", "hearts", "diamonds", "clubs"]);
+  assert.equal(pickSuit("K", full, () => 0), "spades");
+  assert.equal(pickSuit("K", full, () => 0.99), "clubs");
+
+  const empty = full.map((cell) =>
+    cell.rank === "K" ? { ...cell, count: 0 } : cell,
+  );
+  assert.equal(pickSuit("K", empty, () => 0.5), "spades");
+
+  const noSpades = full.map((cell) =>
+    cell.rank === "K" && cell.suit === "spades" ? { ...cell, count: 0 } : cell,
+  );
+  assert.equal(pickSuit("K", noSpades, () => 0.01), "hearts");
 });

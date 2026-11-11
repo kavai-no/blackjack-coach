@@ -15,9 +15,9 @@ import { projectRemainingComposition } from "../src/read/remaining-composition.t
 const root = fileURLToPath(new URL("..", import.meta.url));
 const SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"];
 
-/** Parked chrome and later-slice pads. Not part of the NEW SHOE page. */
+/** Parked chrome. Rank and suit pads stay on the live page. */
 const PARKS =
-  /RoR|Wong|21\+3|Perfect Pair|sidebet|SPLIT|SURRENDER|suitGrid|cardsGrid|compDep|heatSim|useKelly|Expert/i;
+  /RoR|Wong|21\+3|Perfect Pair|sidebet|SPLIT|SURRENDER|compDep|heatSim|useKelly|Expert/i;
 
 function readRoot(name: string): string {
   return readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
@@ -85,7 +85,7 @@ function assertEmptyShoe(html: string) {
     counts.ace_tc,
     "P: 0.00%",
     "D: 8.00",
-    "Hi-Lo: 0 / +0.00",
+    "Hi-Lo: 0 / 0.00",
   ]) {
     assert.equal(html.includes(text), true, text);
   }
@@ -200,8 +200,10 @@ test("GWT click #shuffleBtn confirms, then paints the three empty-shoe views", (
   assert.equal(document.querySelector("#infoBar") !== null, true);
   assert.equal(document.querySelector("#combinedChart") !== null, true);
   assert.equal(document.querySelector("#combinedChart-data") !== null, true);
-  assert.equal(document.querySelector("#cardsGrid"), null);
-  assert.equal(document.querySelector("#suitGrid"), null);
+  assert.equal(document.querySelector("#cardsGrid") !== null, true);
+  assert.equal(document.querySelectorAll("#cardsGrid button").length, 13);
+  assert.equal(document.querySelector("#suitGrid") !== null, true);
+  assert.equal(document.querySelectorAll("#suitGrid button").length, 4);
   assert.equal(PARKS.test(idle), false);
   assert.deepEqual(seen, []);
 
@@ -281,6 +283,8 @@ test("built dist is the Pages artifact and the bundle drives the same NEW SHOE s
   click(document.querySelector("#shuffleBtn"));
   assert.deepEqual(seen, ["Start fresh 8-deck shoe?"]);
   assertEmptyShoe(document.querySelector("#app")?.innerHTML ?? "");
-  assert.equal(document.querySelector("#cardsGrid"), null);
-  assert.equal(document.querySelector("#suitGrid"), null);
+  assert.equal(document.querySelector("#cardsGrid") !== null, true);
+  assert.equal(document.querySelectorAll("#cardsGrid button").length, 13);
+  assert.equal(document.querySelector("#suitGrid") !== null, true);
+  assert.equal(document.querySelectorAll("#suitGrid button").length, 4);
 });

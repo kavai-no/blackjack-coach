@@ -197,12 +197,12 @@ test("GWT first NEW SHOE paints empty felt, RA −0.875, full 8-deck donut", () 
   assert.equal(counts.penetration, "P: 0.00%");
   assert.equal(counts.decks_left, "D: 8.00");
   assert.equal(counts.hilo_rc, 0);
-  assert.equal(counts.hilo_tc, "+0.00");
-  assert.equal(counts.hilo_display, "Hi-Lo: 0 / +0.00");
-  assert.equal(counts.apc_tc, "APC: +0.00");
-  assert.equal(counts.zen_tc, "Zen: +0.00");
-  assert.equal(counts.omega_ii_tc, "Omega II: +0.00");
-  assert.equal(counts.ace_tc, "Ace: +0.00");
+  assert.equal(counts.hilo_tc, "0.00");
+  assert.equal(counts.hilo_display, "Hi-Lo: 0 / 0.00");
+  assert.equal(counts.apc_tc, "APC: 0.00");
+  assert.equal(counts.zen_tc, "Zen: 0.00");
+  assert.equal(counts.omega_ii_tc, "Omega II: 0.00");
+  assert.equal(counts.ace_tc, "Ace: 0.00");
 
   assert.deepEqual(
     [...html.matchAll(/data-seat="([^"]+)"/g)].map((match) => match[1]),
@@ -492,11 +492,11 @@ test("GWT start_shoe_mid_shoe_reshuffle: populated split A/B resets felt, counts
   assert.equal(countsBody.ra.value, "-0.88");
   assert.equal(countsBody.ra.colour, "#ef4444");
   assert.equal(countsBody.hilo_rc, 0);
-  assert.equal(countsBody.hilo_display, "Hi-Lo: 0 / +0.00");
-  assert.equal(countsBody.apc_tc, "APC: +0.00");
-  assert.equal(countsBody.zen_tc, "Zen: +0.00");
-  assert.equal(countsBody.omega_ii_tc, "Omega II: +0.00");
-  assert.equal(countsBody.ace_tc, "Ace: +0.00");
+  assert.equal(countsBody.hilo_display, "Hi-Lo: 0 / 0.00");
+  assert.equal(countsBody.apc_tc, "APC: 0.00");
+  assert.equal(countsBody.zen_tc, "Zen: 0.00");
+  assert.equal(countsBody.omega_ii_tc, "Omega II: 0.00");
+  assert.equal(countsBody.ace_tc, "Ace: 0.00");
 
   const remainingBody = remaining.body as ReturnType<typeof projectRemainingComposition>;
   assert.equal(

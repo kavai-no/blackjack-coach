@@ -17,10 +17,14 @@ import { TABLE_STREAM } from "../src/write/in-memory-store.ts";
  * The page's own `<script src="./boot.js">` mounts the app.
  *
  * Not claimed here: the HCL mid-shoe branch that double-clicks hero seat 1,
- * deals K♥/K♠, and clicks SPLIT. The live entry strips `#cardsGrid` and
- * The Chromium test loads `dist/boot.js` and reads `readTable`, the mounted
- * store's table stream. The linkedom mount below is supporting only.
- * `live_page_not_proven_8` stays open until SPLIT is reachable live.
+ * Not claimed here: the HCL mid-shoe branch that double-clicks hero seat 1,
+ * deals K♥/K♠, and clicks SPLIT. The live entry mounts `#cardsGrid` and
+ * `#suitGrid`. It does not paint SPLIT until a hero pair exists. No seat
+ * wears `.active` until a click or NEW SHOE. Hero `your-seat` on seat 1
+ * is original `buildTable`. The Chromium test loads `dist/boot.js` and
+ * reads `readTable`, the mounted store's table stream. The linkedom mount
+ * below is supporting only. `live_page_not_proven_8` stays open until
+ * SPLIT is reachable live.
  */
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -123,11 +127,11 @@ async function assertFullShoeChart(page: Page): Promise<void> {
     await ra.evaluate((element) => getComputedStyle(element).color),
     "rgb(239, 68, 68)",
   );
-  await page.getByText("Hi-Lo: 0 / +0.00", { exact: true }).waitFor();
-  await page.getByText("APC: +0.00", { exact: true }).waitFor();
-  await page.getByText("Zen: +0.00", { exact: true }).waitFor();
-  await page.getByText("Omega II: +0.00", { exact: true }).waitFor();
-  await page.getByText("Ace: +0.00", { exact: true }).waitFor();
+  await page.getByText("Hi-Lo: 0 / 0.00", { exact: true }).waitFor();
+  await page.getByText("APC: 0.00", { exact: true }).waitFor();
+  await page.getByText("Zen: 0.00", { exact: true }).waitFor();
+  await page.getByText("Omega II: 0.00", { exact: true }).waitFor();
+  await page.getByText("Ace: 0.00", { exact: true }).waitFor();
 
   const labels = page.locator("#combinedChart .rank-label");
   assert.equal(await page.locator("#combinedChart svg .rank-path").count(), 13);
@@ -185,7 +189,7 @@ async function assertEmptyShoe(page: Page): Promise<void> {
   assert.match(ring, /rgb\(0,\s*255,\s*136\)/);
   assert.equal(await page.locator(".seat-round.active").count(), 1);
 
-  await page.getByText("Ace: +0.00", { exact: true }).waitFor();
+  await page.getByText("Ace: 0.00", { exact: true }).waitFor();
 
   await assertFullShoeChart(page);
 }
@@ -233,8 +237,8 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
     const shoe = page.getByRole("button", { name: "NEW SHOE" });
     assert.equal(await shoe.isVisible(), true);
     assert.equal(await shoe.isEnabled(), true);
-    assert.equal(await page.locator("#cardsGrid").count(), 0);
-    assert.equal(await page.locator("#suitGrid").count(), 0);
+    assert.equal(await page.locator("#cardsGrid").count(), 1);
+    assert.equal(await page.locator("#suitGrid").count(), 1);
     assert.equal(await page.getByRole("button", { name: "SPLIT" }).count(), 0);
     await assertFullShoeChart(page);
     assert.equal(await page.locator("[data-seat]").count(), 8);

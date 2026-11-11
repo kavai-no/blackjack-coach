@@ -150,12 +150,12 @@ test("GWT empty shoe: Counts / info bar resets P/D/RA and live counts; no RoR/Wo
   assert.equal(bar.ra.colour, "#ef4444");
   assert.equal(bar.ra.className, "negative");
   assert.equal(bar.hilo_rc, 0);
-  assert.equal(bar.hilo_tc, "+0.00");
-  assert.equal(bar.hilo_display, "Hi-Lo: 0 / +0.00");
-  assert.equal(bar.apc_tc, "APC: +0.00");
-  assert.equal(bar.zen_tc, "Zen: +0.00");
-  assert.equal(bar.omega_ii_tc, "Omega II: +0.00");
-  assert.equal(bar.ace_tc, "Ace: +0.00");
+  assert.equal(bar.hilo_tc, "0.00");
+  assert.equal(bar.hilo_display, "Hi-Lo: 0 / 0.00");
+  assert.equal(bar.apc_tc, "APC: 0.00");
+  assert.equal(bar.zen_tc, "Zen: 0.00");
+  assert.equal(bar.omega_ii_tc, "Omega II: 0.00");
+  assert.equal(bar.ace_tc, "Ace: 0.00");
   assert.notEqual(bar.ace_tc, bar.ra.value);
   assert.deepEqual(bar.panel_chrome, {
     id: "#infoBar",

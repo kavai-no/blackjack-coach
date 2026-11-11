@@ -297,7 +297,8 @@ test("GWT counts_after_withdraw: ace observe reverses, including Omega II", () =
   assert.notEqual(dealt.hilo_rc, empty.hilo_rc);
   assert.notEqual(dealt.acesLeft, empty.acesLeft);
   assert.notEqual(dealt.ra.numeric, empty.ra.numeric);
-  assert.notEqual(dealt.omega_ii_tc, empty.omega_ii_tc);
+  assert.equal(dealt.omega_ii_tc, empty.omega_ii_tc);
+  assert.notEqual(dealt.ace_tc, empty.ace_tc);
   assert.notEqual(dealt.penetration, empty.penetration);
   assert.equal(dealt.acesLeft, empty.acesLeft - 1);
 
