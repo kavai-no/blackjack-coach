@@ -303,3 +303,35 @@ test("felt_set_suit: hearts corrects the drawn K♠ to K♥", async () => {
     });
   }
 });
+
+test("felt total 21: K then A, hand-total colour is rgb(0 255 245)", async () => {
+  buildDist();
+  const { server, origin } = await startServer();
+  let browser: Browser | undefined;
+  try {
+    const opened = await openLive(origin);
+    browser = opened.browser;
+    const page = opened.page;
+    await page.getByRole("button", { name: "NEW SHOE" }).click();
+    await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
+    await page.locator('#cardsGrid button[data-rank="K"]').click();
+    await page.getByText("K♠", { exact: true }).waitFor();
+    await page.locator('#cardsGrid button[data-rank="A"]').click();
+    await page.getByText("Total: 21", { exact: true }).waitFor();
+
+    const totals = page.locator('[data-seat="1"] .hand-total');
+    assert.equal(await totals.count(), 1);
+    assert.equal((await totals.innerText()).trim(), "Total: 21");
+    assert.equal(
+      await totals.evaluate((element) => getComputedStyle(element).color),
+      "rgb(0, 255, 245)",
+    );
+    assert.equal(await page.locator("#hand-1 .mini").count(), 2);
+    assert.equal(await page.getByRole("button", { name: "SPLIT" }).count(), 0);
+  } finally {
+    await browser?.close();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});

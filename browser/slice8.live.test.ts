@@ -131,7 +131,7 @@ async function assertFullShoeChart(page: Page): Promise<void> {
   await page.getByText("APC: +0.00", { exact: true }).waitFor();
   await page.getByText("Zen: +0.00", { exact: true }).waitFor();
   await page.getByText("Omega II: +0.00", { exact: true }).waitFor();
-  await page.getByText("Ace: +0.00", { exact: true }).waitFor();
+  await page.getByText("Ace: 0.00", { exact: true }).waitFor();
 
   const labels = page.locator("#combinedChart .rank-label");
   assert.equal(await page.locator("#combinedChart svg .rank-path").count(), 13);
@@ -189,7 +189,7 @@ async function assertEmptyShoe(page: Page): Promise<void> {
   assert.match(ring, /rgb\(0,\s*255,\s*136\)/);
   assert.equal(await page.locator(".seat-round.active").count(), 1);
 
-  await page.getByText("Ace: +0.00", { exact: true }).waitFor();
+  await page.getByText("Ace: 0.00", { exact: true }).waitFor();
 
   await assertFullShoeChart(page);
 }

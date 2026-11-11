@@ -334,7 +334,7 @@ test("GWT Backspace withdraws the last registered card and restores counts and r
   assert.equal(counts.acesLeft, 32);
   assert.equal(counts.hilo_rc, 0);
   assert.equal(counts.omega_ii_tc, "Omega II: +0.00");
-  assert.equal(counts.ace_tc, "Ace: +0.00");
+  assert.equal(counts.ace_tc, "Ace: 0.00");
   assert.notEqual(counts.ra.numeric, 0);
   assert.equal(felt.seat_order, "D,7,6,5,4,3,2,1");
   assert.equal(felt.screen.focus_seat, "1");
