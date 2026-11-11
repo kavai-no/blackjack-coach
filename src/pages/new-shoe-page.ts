@@ -1,6 +1,7 @@
 import { handleHttp, type HttpRequest } from "../http/handle.ts";
 import { createNewShoeShell } from "../ui/new-shoe-shell.ts";
 import {
+  TABLE_STREAM,
   createInMemoryEventStore,
   type InMemoryEventStore,
 } from "../write/in-memory-store.ts";
@@ -24,6 +25,7 @@ type AppRoot = {
   innerHTML: string;
   querySelector(selector: string): BoundNode | null;
   querySelectorAll(selector: string): ArrayLike<BoundNode>;
+  setAttribute(name: string, value: string): void;
 };
 
 type PageDocument = {
@@ -86,12 +88,18 @@ export function mountNewShoePage(
     (request: HttpRequest) => handleHttp(store, request),
     confirm,
   );
+  // Same store the shell writes. Read-only copy of the table stream; no append.
+  publishTableRead(store);
 
+  let screen = "felt_idle_no_events";
   const paint = () => {
     root.innerHTML = presentNewShoeFragment(shell.html());
     root.querySelector("#shuffleBtn")?.addEventListener("click", () => {
       const result = shell.pressNewShoe();
-      if (!result.cancelled) paint();
+      if (!result.cancelled) {
+        screen = "felt_new_shoe";
+        paint();
+      }
     });
     root.querySelector("#nextHandBtn")?.addEventListener("click", () => {
       const result = shell.pressNextHand();
@@ -99,10 +107,23 @@ export function mountNewShoePage(
     });
     bindFocus(root);
     bindChartTips(root);
+    root.setAttribute("data-screen", screen);
   };
 
   paint();
   return store;
+}
+
+/** `store.read` of the mounted table stream. Copies only — no writer, no second store. */
+function publishTableRead(store: InMemoryEventStore): void {
+  const readTable = () =>
+    store.read(TABLE_STREAM).map((event) => ({ ...event }));
+  Object.defineProperty(globalThis, "readTable", {
+    configurable: true,
+    enumerable: false,
+    writable: false,
+    value: readTable,
+  });
 }
 
 /** Focus ring is UI chrome. Clicking a seat header does not append an event. */

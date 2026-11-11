@@ -18,8 +18,8 @@ import { TABLE_STREAM } from "../src/write/in-memory-store.ts";
  *
  * Not claimed here: the HCL mid-shoe branch that double-clicks hero seat 1,
  * deals K♥/K♠, and clicks SPLIT. The live entry strips `#cardsGrid` and
- * `#suitGrid`, and does not paint SPLIT. No seat wears `.active` until a
- * click or NEW SHOE. Hero `your-seat` on seat 1 is original `buildTable`.
+ * The Chromium test loads `dist/boot.js` and reads `readTable`, the mounted
+ * store's table stream. The linkedom mount below is supporting only.
  * `live_page_not_proven_8` stays open until SPLIT is reachable live.
  */
 
@@ -35,6 +35,24 @@ const SUITS = [
 ] as const;
 
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;
+
+type RecordedTableEvent = {
+  type: string;
+  position: number;
+  decks?: number;
+};
+
+/** Read the table stream of the page boot.js mounted. Not a second store. */
+async function recordedTable(page: Page): Promise<RecordedTableEvent[]> {
+  const history = await page.evaluate(() => {
+    const read = Reflect.get(globalThis, "readTable");
+    if (typeof read !== "function") {
+      throw new Error("readTable missing");
+    }
+    return read();
+  });
+  return history as RecordedTableEvent[];
+}
 
 function contentType(file: string): string {
   if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
@@ -199,7 +217,7 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
       return dialog.accept();
     });
     await page.goto(`${origin}${BASE}/`);
-    await page.getByRole("button", { name: "NEW SHOE" }).waitFor();
+    await page.locator('#app[data-screen="felt_idle_no_events"]').waitFor();
 
     assert.equal(page.url(), `${origin}${BASE}/`);
     assert.equal(
@@ -228,6 +246,12 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
         .evaluate((element) => element.classList.contains("your-seat")),
       true,
     );
+    const idleHistory = await recordedTable(page);
+    assert.equal(
+      idleHistory.some((event) => event.type === "shoe_started"),
+      false,
+    );
+    assert.deepEqual(idleHistory, []);
 
     const seat2 = page.locator('[data-seat="2"] .seat-round');
     await seat2.waitFor();
@@ -249,6 +273,11 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
     );
 
     await shoe.click();
+    await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
+    const started = await recordedTable(page);
+    assert.deepEqual(started, [
+      { type: "shoe_started", decks: 8, position: 1 },
+    ]);
     await assertEmptyShoe(page);
 
     await page.locator('[data-seat="2"] .seat-round').click();
@@ -281,6 +310,7 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
       return dialog.dismiss();
     });
     await cancelled.goto(`${origin}${BASE}/`);
+    await cancelled.locator('#app[data-screen="felt_idle_no_events"]').waitFor();
     const again = cancelled.getByRole("button", { name: "NEW SHOE" });
     await again.waitFor();
     assert.equal(await again.isEnabled(), true);
@@ -303,6 +333,11 @@ test("live Pages entry at /blackjack-coach/ — NEW SHOE, focus return, confirm 
     );
     assert.equal((await cancelled.locator("#ra").innerText()).trim(), "RA: -0.88");
     assert.equal(await cancelled.locator(".rank-label").count(), 13);
+    assert.equal(
+      await cancelled.locator("#app").getAttribute("data-screen"),
+      "felt_idle_no_events",
+    );
+    assert.deepEqual(await recordedTable(cancelled), []);
     await cancelled.close();
   } finally {
     await browser?.close();
