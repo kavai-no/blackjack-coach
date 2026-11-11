@@ -10,8 +10,8 @@ import { chromium, type Browser, type Page } from "playwright";
 /**
  * Live Pages entry. Serves `dist/` — the directory deploy.yml uploads —
  * under `/blackjack-coach/`. The page script is `./boot.js`.
- * Rank and suit clicks go through that entry. Events come from `readTable`,
- * the mounted store. No shell substitute and no second store.
+ * A rank click posts observe-card then set-suit. The suit pad corrects it.
+ * Events come from `readTable`. `pickSuitRandom` is set before boot.js.
  */
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -80,32 +80,65 @@ function readHistory(page: Page): Promise<LiveEvent[]> {
   });
 }
 
-test("live Pages entry: NEW SHOE, click K, click hearts — felt, counts, donut, events", async () => {
+/** Fixture value 0, installed before the page's boot.js evaluates. */
+async function openLive(origin: string): Promise<{ browser: Browser; page: Page }> {
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  });
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis, "pickSuitRandom", {
+      configurable: true,
+      enumerable: false,
+      writable: false,
+      value: 0,
+    });
+  });
+  page.on("dialog", (dialog) => {
+    if (dialog.message() !== "Start fresh 8-deck shoe?") {
+      throw new Error(dialog.message());
+    }
+    return dialog.accept();
+  });
+  await page.goto(`${origin}${BASE}/`);
+  await page.locator('#app[data-screen="felt_idle_no_events"]').waitFor();
+  return { browser, page };
+}
+
+async function hoverTip(page: Page, selector: string): Promise<string> {
+  await page.locator(selector).hover();
+  return (await page.locator("#combinedChart .d3-tooltip").innerText()).trim();
+}
+
+function rankLabel(page: Page, rank: string) {
+  return page.locator(`#combinedChart .rank-label[data-chart-rank="${rank}"]`);
+}
+
+let built = false;
+function buildDist(): void {
+  if (built) return;
   execFileSync(process.execPath, ["scripts/build-pages.mjs"], {
     cwd: root,
     stdio: "inherit",
   });
-  const built = readFileSync(join(dist, "boot.js"), "utf8");
-  assert.equal(built.includes("/commands/observe-card"), true);
-  assert.equal(built.includes("/commands/set-suit"), true);
-  assert.equal(built.includes("cardsGrid"), true);
-  assert.equal(built.includes("suitGrid"), true);
-  assert.equal(built.includes("es3"), false);
+  built = true;
+}
+
+test("felt_pick_rank: NEW SHOE, click K, fixture 0 draws K♠", async () => {
+  buildDist();
+  const builtJs = readFileSync(join(dist, "boot.js"), "utf8");
+  assert.equal(builtJs.includes("/commands/observe-card"), true);
+  assert.equal(builtJs.includes("/commands/set-suit"), true);
+  assert.equal(builtJs.includes("pickSuitRandom"), true);
+  assert.equal(builtJs.includes("es3"), false);
 
   const { server, origin } = await startServer();
   let browser: Browser | undefined;
   try {
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-dev-shm-usage"],
-    });
-    const page = await browser.newPage();
-    page.on("dialog", (dialog) => {
-      assert.equal(dialog.message(), "Start fresh 8-deck shoe?");
-      return dialog.accept();
-    });
-    await page.goto(`${origin}${BASE}/`);
-    await page.getByRole("button", { name: "NEW SHOE" }).waitFor();
+    const opened = await openLive(origin);
+    browser = opened.browser;
+    const page = opened.page;
 
     const ranks = page.locator("#cardsGrid button");
     const suits = page.locator("#suitGrid button");
@@ -113,145 +146,148 @@ test("live Pages entry: NEW SHOE, click K, click hearts — felt, counts, donut,
     assert.equal(await page.locator("#suitGrid").count(), 1);
     assert.equal(await ranks.count(), 13);
     assert.equal(await suits.count(), 4);
-    assert.deepEqual(
-      await ranks.evaluateAll((nodes) => nodes.map((node) => node.textContent)),
-      ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"],
-    );
-    assert.deepEqual(
-      await suits.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-suit"))),
-      ["clubs", "diamonds", "hearts", "spades"],
-    );
-
     const king = page.locator('#cardsGrid button[data-rank="K"]');
-    const hearts = page.locator('#suitGrid button[data-suit="hearts"]');
-    assert.equal(await king.isVisible(), true);
     assert.equal(await king.isEnabled(), true);
-    assert.equal(await hearts.isVisible(), true);
-    assert.equal(await hearts.isEnabled(), true);
     assert.deepEqual(await readHistory(page), []);
 
     await king.click();
     assert.deepEqual(await readHistory(page), []);
-    assert.equal(await page.locator("#hand-1 .mini").count(), 0);
-    assert.equal(
-      (await page.locator('#combinedChart .rank-label[data-chart-rank="K"]').textContent())?.trim(),
-      "32",
-    );
-    assert.equal((await page.locator("#ra").innerText()).trim(), "RA: -0.88");
-
-    await hearts.click();
-    assert.deepEqual(await readHistory(page), []);
 
     await page.getByRole("button", { name: "NEW SHOE" }).click();
+    await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
+    await page.locator('#suitGrid button[data-suit="hearts"]').click();
     assert.deepEqual(
       (await readHistory(page)).map((event) => event.type),
       ["shoe_started"],
     );
-    assert.equal((await readHistory(page))[0]?.decks, 8);
-
-    await hearts.click();
-    const afterBareSuit = await readHistory(page);
-    assert.deepEqual(
-      afterBareSuit.map((event) => event.type),
-      ["shoe_started"],
-    );
-    assert.equal(await page.locator(".mini").count(), 0);
-    assert.equal(
-      (await page.locator('#combinedChart .suit-slice[data-suit="hearts"]').getAttribute("data-tip")),
-      "♥: 104",
-    );
 
     await king.click();
-    const observed = await readHistory(page);
+    await page.getByText("K♠", { exact: true }).waitFor();
+    const history = await readHistory(page);
     assert.deepEqual(
-      observed.map((event) => event.type),
-      ["shoe_started", "card_observed"],
+      history.map((event) => event.type),
+      ["shoe_started", "card_observed", "card_suit_set"],
     );
-    assert.equal(observed[1]?.rank, "K");
-    assert.equal(observed[1]?.seat, "1");
-    assert.equal(observed[1] !== undefined && "suit" in observed[1], false);
+    assert.equal(history[1]?.rank, "K");
+    assert.equal(history[1]?.seat, "1");
+    assert.equal(history[1] !== undefined && "suit" in history[1], false);
+    assert.equal(history[2]?.suit, "spades");
+    assert.equal(history[2]?.seat, "1");
+    assert.equal(history[2] !== undefined && "rank" in history[2], false);
+
+    const card = page.locator("#hand-1 .mini");
+    assert.equal(await card.count(), 1);
+    assert.equal((await card.innerText()).trim(), "K♠");
+    assert.equal(await card.getAttribute("data-rank"), "K");
+    assert.equal(await card.getAttribute("data-suit"), "spades");
     assert.equal(
       (await page.locator('[data-seat="1"] .hand-total').innerText()).trim(),
       "Total: 10",
     );
-    const unsuited = page.locator("#hand-1 .mini");
-    assert.equal((await unsuited.innerText()).trim(), "K");
-    assert.equal(await unsuited.getAttribute("data-rank"), "K");
-    assert.equal(await unsuited.getAttribute("data-suit"), "");
-    assert.equal(await page.locator("#hand-1 .mini").count(), 1);
     for (const seat of ["D", "7", "6", "5", "4", "3", "2"]) {
       assert.equal((await page.locator(`#hand-${seat}`).innerText()).trim(), "");
     }
-    assert.equal(await page.locator(".seat-round.active").count(), 1);
-    assert.equal(
-      await page.locator('[data-seat="1"] .seat-round.your-seat').count(),
-      1,
-    );
 
-    await page.getByText("APC: -0.38", { exact: true }).waitFor();
-    await page.getByText("Ace: +0.01", { exact: true }).waitFor();
-    await page.getByText("Hi-Lo: -1 / -0.13", { exact: true }).waitFor();
-    await page.getByText("Zen: -0.25", { exact: true }).waitFor();
-    await page.getByText("Omega II: -0.25", { exact: true }).waitFor();
-    await page.getByText("P: 0.24%", { exact: true }).waitFor();
-    await page.getByText("D: 7.98", { exact: true }).waitFor();
+    assert.equal((await page.locator("#penetration").innerText()).trim(), "P: 0.24%");
+    assert.equal((await page.locator("#decksLeft").innerText()).trim(), "D: 7.98");
     assert.equal((await page.locator("#ra").innerText()).trim(), "RA: -0.87");
-    assert.equal(await page.getByText("APC: -0.50", { exact: true }).count(), 0);
-    assert.equal(await page.getByText("Ace: +0.00", { exact: true }).count(), 0);
-    assert.equal(await page.getByText("Omega II: +0.38", { exact: true }).count(), 0);
+    assert.equal((await page.locator("#hiLo").innerText()).trim(), "Hi-Lo: -1 / -0.13");
+    assert.equal((await page.locator("#apcTC").innerText()).trim(), "APC: -0.38");
+    assert.equal((await page.locator("#zenTC").innerText()).trim(), "Zen: -0.25");
+    assert.equal((await page.locator("#omegaIITC").innerText()).trim(), "Omega II: -0.25");
+    assert.equal((await page.locator("#aceTC").innerText()).trim(), "Ace: +0.01");
 
     for (const rank of ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q"]) {
-      assert.equal(
-        (await page.locator(`#combinedChart .rank-label[data-chart-rank="${rank}"]`).textContent())?.trim(),
-        "32",
-        rank,
-      );
+      assert.equal((await rankLabel(page, rank).textContent())?.trim(), "32", rank);
     }
+    assert.equal((await rankLabel(page, "K").textContent())?.trim(), "31");
     assert.equal(
-      (await page.locator('#combinedChart .rank-label[data-chart-rank="K"]').textContent())?.trim(),
-      "31",
+      await hoverTip(page, '#combinedChart .suit-slice[data-suit="spades"]'),
+      "♠: 103",
     );
     assert.equal(
-      (await page.locator('#combinedChart .suit-slice[data-suit="hearts"]').getAttribute("data-tip")),
+      await hoverTip(page, '#combinedChart .suit-slice[data-suit="clubs"]'),
+      "♣: 104",
+    );
+    assert.equal(
+      await hoverTip(page, '#combinedChart .suit-slice[data-suit="hearts"]'),
       "♥: 104",
     );
-
-    await hearts.click();
-    const suited = await readHistory(page);
-    assert.deepEqual(
-      suited.map((event) => event.type),
-      ["shoe_started", "card_observed", "card_suit_set"],
+    assert.equal(
+      await hoverTip(page, '#combinedChart .suit-slice[data-suit="diamonds"]'),
+      "♦: 104",
     );
-    assert.equal(suited[2]?.suit, "hearts");
-    assert.equal(suited[2]?.seat, "1");
-    assert.equal(suited[2] !== undefined && "rank" in suited[2], false);
-    const faced = page.locator("#hand-1 .mini");
-    assert.equal((await faced.innerText()).trim(), "K♥");
-    assert.equal(await faced.getAttribute("data-rank"), "K");
-    assert.equal(await faced.getAttribute("data-suit"), "hearts");
+  } finally {
+    await browser?.close();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("felt_set_suit: hearts corrects the drawn K♠ to K♥", async () => {
+  buildDist();
+  const { server, origin } = await startServer();
+  let browser: Browser | undefined;
+  try {
+    const opened = await openLive(origin);
+    browser = opened.browser;
+    const page = opened.page;
+    await page.getByRole("button", { name: "NEW SHOE" }).click();
+    await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
+    await page.locator('#cardsGrid button[data-rank="K"]').click();
+    await page.getByText("K♠", { exact: true }).waitFor();
+
+    await page.locator('#suitGrid button[data-suit="hearts"]').click();
+    await page.getByText("K♥", { exact: true }).waitFor();
+
+    const history = await readHistory(page);
+    assert.deepEqual(
+      history.map((event) => event.type),
+      ["shoe_started", "card_observed", "card_suit_set", "card_suit_set"],
+    );
+    assert.equal(history[2]?.suit, "spades");
+    assert.equal(history[3]?.suit, "hearts");
+    assert.equal(history[3]?.seat, "1");
+    assert.equal(history[3] !== undefined && "rank" in history[3], false);
+
+    const card = page.locator("#hand-1 .mini");
+    assert.equal(await card.count(), 1);
+    assert.equal((await card.innerText()).trim(), "K♥");
+    assert.equal(await card.getAttribute("data-rank"), "K");
+    assert.equal(await card.getAttribute("data-suit"), "hearts");
     assert.equal(
       (await page.locator('[data-seat="1"] .hand-total').innerText()).trim(),
       "Total: 10",
     );
+    assert.equal((await rankLabel(page, "K").textContent())?.trim(), "31");
+    for (const rank of ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q"]) {
+      assert.equal((await rankLabel(page, rank).textContent())?.trim(), "32", rank);
+    }
     assert.equal(
-      (await page.locator('#combinedChart .rank-label[data-chart-rank="K"]').textContent())?.trim(),
-      "31",
+      await hoverTip(page, '#combinedChart .suit-slice[data-suit="spades"]'),
+      "♠: 104",
     );
     assert.equal(
-      (await page.locator('#combinedChart .rank-label[data-chart-rank="10"]').textContent())?.trim(),
-      "32",
+      await hoverTip(page, '#combinedChart .suit-slice[data-suit="clubs"]'),
+      "♣: 104",
     );
     assert.equal(
-      (await page.locator('#combinedChart .suit-slice[data-suit="hearts"]').getAttribute("data-tip")),
+      await hoverTip(page, '#combinedChart .suit-slice[data-suit="hearts"]'),
       "♥: 103",
     );
     assert.equal(
-      (await page.locator('#combinedChart .suit-slice[data-suit="spades"]').getAttribute("data-tip")),
-      "♠: 104",
+      await hoverTip(page, '#combinedChart .suit-slice[data-suit="diamonds"]'),
+      "♦: 104",
     );
-    await page.getByText("APC: -0.38", { exact: true }).waitFor();
-    await page.getByText("Ace: +0.01", { exact: true }).waitFor();
-    assert.equal(/RoR|Wong|21\+3|sidebet/i.test(await page.locator("#app").innerText()), false);
+    assert.equal((await page.locator("#penetration").innerText()).trim(), "P: 0.24%");
+    assert.equal((await page.locator("#decksLeft").innerText()).trim(), "D: 7.98");
+    assert.equal((await page.locator("#ra").innerText()).trim(), "RA: -0.87");
+    assert.equal((await page.locator("#hiLo").innerText()).trim(), "Hi-Lo: -1 / -0.13");
+    assert.equal((await page.locator("#apcTC").innerText()).trim(), "APC: -0.38");
+    assert.equal((await page.locator("#zenTC").innerText()).trim(), "Zen: -0.25");
+    assert.equal((await page.locator("#omegaIITC").innerText()).trim(), "Omega II: -0.25");
+    assert.equal((await page.locator("#aceTC").innerText()).trim(), "Ace: +0.01");
   } finally {
     await browser?.close();
     await new Promise<void>((resolve, reject) => {

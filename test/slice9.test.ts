@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { RANKS } from "../src/counting/maps.ts";
+import { RANKS, SUITS } from "../src/counting/maps.ts";
+import { pickSuit } from "../src/felt/pick-suit.ts";
 import {
   COUNTS_PATH,
   FELT_PATH,
@@ -462,4 +463,32 @@ test("observe-card boundary and shell do not re-derive counts or open a network 
   assert.equal(shellSrc.includes("COUNT_MAPS"), false);
   assert.equal(shellSrc.includes("node:http"), false);
   assert.equal(shellSrc.includes("createServer"), false);
+
+  const pageSrc = readFileSync(
+    new URL("../src/pages/new-shoe-page.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(pageSrc, /pickSuit\(/);
+  assert.match(pageSrc, /pickSuitRandom/);
+  assert.equal(pageSrc.includes("projectRemainingComposition"), false);
+  assert.equal(pageSrc.includes("Math.random"), true);
+});
+
+test("pickSuit walks original suit order against the live rank×suit counts", () => {
+  const full = projectRemainingComposition([
+    { type: "shoe_started", decks: 8 },
+  ]).remaining_by_rank_suit;
+  assert.deepEqual(SUITS, ["spades", "hearts", "diamonds", "clubs"]);
+  assert.equal(pickSuit("K", full, () => 0), "spades");
+  assert.equal(pickSuit("K", full, () => 0.99), "clubs");
+
+  const empty = full.map((cell) =>
+    cell.rank === "K" ? { ...cell, count: 0 } : cell,
+  );
+  assert.equal(pickSuit("K", empty, () => 0.5), "spades");
+
+  const noSpades = full.map((cell) =>
+    cell.rank === "K" && cell.suit === "spades" ? { ...cell, count: 0 } : cell,
+  );
+  assert.equal(pickSuit("K", noSpades, () => 0.01), "hearts");
 });
