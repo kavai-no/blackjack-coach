@@ -474,7 +474,7 @@ test("mounted page keeps #nextHandBtn in the topbar and clicks it only through t
   const cleared = document.querySelector("#app")?.innerHTML ?? "";
   assert.match(
     cleared,
-    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand" id="hand-1"><\/div><\/section>/,
+    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div style="display:flex" class="hand" id="hand-1"><\/div><\/section>/,
   );
   assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|SURRENDER|Expert/i.test(cleared), false);
 
