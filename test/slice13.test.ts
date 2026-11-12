@@ -201,7 +201,7 @@ test("POST withdraw-card without rank and seat is 400 and does not append", () =
   assert.equal(get.status, 404);
 });
 
-test("POST withdraw-card that is not the last registered card is 400 and does not append", () => {
+test("POST withdraw-card accepts the named pile's last card and rejects anything older in that pile", () => {
   const store = createInMemoryEventStore();
   const handle = (request: HttpRequest) => handleHttp(store, request);
   start(handle);
@@ -210,7 +210,6 @@ test("POST withdraw-card that is not the last registered card is 400 and does no
   const before = store.read(TABLE_STREAM).map((event) => event.type);
 
   for (const body of [
-    { rank: "5", seat: "1" },
     { rank: "K", seat: "1" },
     { rank: "5", seat: "D" },
     { rank: "Q", seat: "D" },
@@ -227,6 +226,18 @@ test("POST withdraw-card that is not the last registered card is 400 and does no
     store.read(TABLE_STREAM).map((event) => event.type),
     before,
   );
+
+  // Locked 2026-11-07: 5 is the last card of seat 1 even though K on D is later.
+  const seatOne = ackBody(
+    handle({
+      method: "POST",
+      path: WITHDRAW_CARD_PATH,
+      body: { rank: "5", seat: "1" },
+    }),
+  );
+  assert.equal(seatOne.events[0]?.type, "card_withdrawn");
+  assert.equal(seatOne.events[0]?.rank, "5");
+  assert.equal(seatOne.events[0]?.seat, "1");
 
   const withdrawn = ackBody(
     handle({
@@ -519,3 +530,130 @@ test("withdraw-card boundary reuses withdrawCard and does not re-derive counts o
     shellSrc.slice(shellSrc.indexOf("function frame")),
   ), false);
 });
+
+test("GWT advanceFocus moves the next rank; a manual empty seat does not withdraw", () => {
+  const { store, calls, shell } = wired();
+  shell.pressNewShoe();
+  shell.pressRank("K");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "2");
+  calls.length = 0;
+
+  const five = shell.pressRank("5");
+  assert.equal(five.rejected, false);
+  assert.deepEqual(calls[0]?.body, { rank: "5", seat: "2" });
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "3");
+
+  calls.length = 0;
+  shell.pressSeat("4");
+  assert.equal(shell.focusKey(), "4");
+  assert.equal(shell.pressWithdraw().rejected, true);
+  assert.deepEqual(calls, []);
+  assert.equal(
+    store.read(TABLE_STREAM).some((event) => event.type === "card_withdrawn"),
+    false,
+  );
+  assert.equal(shell.focusKey(), "4");
+});
+
+test("GWT manual focus withdraws that pile even when another seat was registered later", () => {
+  const { store, calls, shell } = wired();
+  shell.pressNewShoe();
+  shell.pressRank("K");
+  shell.pressSuit("hearts");
+  shell.pressSeat("1");
+  shell.pressRank("5");
+  shell.pressSuit("clubs");
+  shell.advanceFocus();
+  shell.pressRank("K");
+  shell.pressSuit("spades");
+  calls.length = 0;
+
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1");
+  const pressed = shell.pressWithdraw();
+  assert.equal(pressed.rejected, false);
+  if (pressed.rejected) return;
+  assert.deepEqual(calls[0]?.body, { rank: "5", seat: "1" });
+  assert.equal(shell.focusKey(), "1");
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(
+    felt.seat_piles.find((pile) => pile.seat === "1")?.cards.map((card) => card.rank),
+    ["K"],
+  );
+  assert.deepEqual(
+    felt.seat_piles.find((pile) => pile.seat === "2")?.cards.map((card) => card.rank),
+    ["K"],
+  );
+});
+
+test("GWT seat 7's second card and the dealer's first card jump to seat 1; a third card stays", () => {
+  const { shell } = wired();
+  shell.pressNewShoe();
+  shell.pressSeat("7");
+  shell.pressRank("K");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "D");
+  shell.pressSeat("7");
+  shell.pressRank("5");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "1");
+
+  shell.pressSeat("1");
+  shell.pressRank("K");
+  shell.advanceFocus();
+  shell.pressSeat("1");
+  shell.pressRank("K");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "2");
+  shell.pressSeat("1");
+  shell.pressRank("9");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "1");
+
+  shell.pressSeat("D");
+  shell.pressRank("A");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "1");
+  shell.pressSeat("D");
+  shell.pressRank("3");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "D");
+});
+
+test("GWT header click on a split seat walks A then B, and Backspace removes only B", () => {
+  const { store, calls, shell } = wired();
+  shell.pressNewShoe();
+  shell.pressRank("8");
+  shell.pressSuit("spades");
+  shell.pressSeat("1");
+  shell.pressRank("8");
+  shell.pressSuit("hearts");
+  const split = shell.pressSplit();
+  assert.equal(split.rejected, false);
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1A");
+  shell.pressRank("5");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "2");
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1B");
+  calls.length = 0;
+
+  const pressed = shell.pressWithdraw();
+  assert.equal(pressed.rejected, false);
+  if (pressed.rejected) return;
+  assert.deepEqual(calls[0]?.body, { rank: "8", seat: "1B" });
+  assert.equal(shell.focusKey(), "1B");
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(
+    felt.split_piles.find((pile) => pile.hand === "A")?.cards.map((card) => card.rank),
+    ["8", "5"],
+  );
+  assert.deepEqual(
+    felt.split_piles.find((pile) => pile.hand === "B")?.cards,
+    [],
+  );
+});
+
