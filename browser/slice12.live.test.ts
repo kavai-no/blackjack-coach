@@ -210,6 +210,10 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     await page.locator('#cardsGrid button[data-rank="K"]').click();
     await page.locator("#hand-1").getByText("K♠", { exact: true }).waitFor();
     assert.equal(await text(page, '[data-seat="1"] .hand-total'), "Total: 20");
+    assert.equal(
+      await page.locator('[data-seat="1"] .hand-total').evaluate((element) => getComputedStyle(element).color),
+      "rgb(34, 197, 94)",
+    );
     assert.equal(await page.locator('[data-seat="1"] .hand-total').count(), 1);
     const cards = page.locator("#hand-1 .mini");
     assert.equal(await cards.count(), 2);
@@ -294,7 +298,11 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     assert.equal(await base.isVisible(), false);
     assert.equal(await page.locator("#splitBtn-1").count(), 0);
     assert.equal(await page.getByRole("button", { name: "SPLIT" }).count(), 0);
-    assert.equal(await page.locator(".split-hand.active").count(), 0);
+    const pileA = page.locator("#split-1 .split-hand:nth-child(1)");
+    const pileB = page.locator("#split-1 .split-hand:nth-child(2)");
+    assert.equal(await pileA.evaluate((element) => element.classList.contains("active")), true);
+    assert.equal(await pileB.evaluate((element) => element.classList.contains("active")), false);
+    assert.equal(await page.locator(".split-hand.active").count(), 1);
 
     const seats = await page.locator("[data-seat]").evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute("data-seat")),
@@ -336,12 +344,21 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     ]);
 
     const reset = await readHistory(page);
-    assert.deepEqual(reset.slice(-2).map((event) => event.type), [
-      "hand_completed",
-      "shoe_started",
-    ]);
+    assert.deepEqual(
+      reset.map((event) => event.type),
+      [
+        "shoe_started",
+        "card_observed",
+        "card_suit_set",
+        "card_suit_set",
+        "card_observed",
+        "card_suit_set",
+        "hand_split",
+        "hand_completed",
+        "shoe_started",
+      ],
+    );
     assert.equal(reset.at(-1)?.decks, 8);
-    assert.equal(reset.filter((event) => event.type === "hand_split").length, 1);
 
     assert.deepEqual(
       await page.locator("[data-seat]").evaluateAll((nodes) =>
@@ -421,6 +438,10 @@ test("felt_split: SPLIT stays hidden for 10+K", async () => {
     await page.locator("#hand-1").getByText("K♠", { exact: true }).waitFor();
 
     assert.equal(await text(page, '[data-seat="1"] .hand-total'), "Total: 20");
+    assert.equal(
+      await page.locator('[data-seat="1"] .hand-total').evaluate((element) => getComputedStyle(element).color),
+      "rgb(34, 197, 94)",
+    );
     const cards = page.locator("#hand-1 .mini");
     assert.equal(await cards.count(), 2);
     assert.equal(await cards.nth(0).getAttribute("data-rank"), "10");

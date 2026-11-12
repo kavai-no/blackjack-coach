@@ -328,6 +328,7 @@ test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", (
   assert.equal(felt.screen.split_button_visible, false);
   assert.equal(felt.screen.focus_seat, "1");
   assert.equal(felt.screen.hero_seat, "1");
+  assert.equal(felt.screen.active_split, "1A");
   assert.deepEqual(projectCountsInfoBar(events), countsBefore);
   assert.deepEqual(projectRemainingComposition(events), remainingBefore);
   assert.equal(
@@ -344,7 +345,7 @@ test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", (
   );
   assert.match(
     html,
-    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand" id="hand-1" style="display:none"><\/div><div class="split-container" id="split-1" style="display:flex"><div class="split-hand"><div class="split-label">A<\/div><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="hand" id="hand-1A"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div><\/div><div class="split-hand"><div class="split-label">B<\/div><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="hand" id="hand-1B"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div><\/div><\/div><\/section>/,
+    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand" id="hand-1" style="display:none"><\/div><div class="split-container" id="split-1" style="display:flex"><div class="split-hand active"><div class="split-label">A<\/div><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="hand" id="hand-1A"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div><\/div><div class="split-hand"><div class="split-label">B<\/div><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="hand" id="hand-1B"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div><\/div><\/div><\/section>/,
   );
   for (const seat of SEATS) {
     if (seat === "1") continue;

@@ -46,6 +46,8 @@ export type FeltTable = {
     focus_seat: "1";
     hero_seat: "1";
     split_button_visible: boolean;
+    /** Original `activeSplit`. Pile A of the seat that split. Null when none is live. */
+    active_split: `${FeltSeat}A` | null;
     new_shoe: "start_shoe";
     next_hand: "complete_hand";
   };
@@ -61,6 +63,7 @@ function emptyFelt(): FeltTable {
       focus_seat: "1",
       hero_seat: "1",
       split_button_visible: false,
+      active_split: null,
       new_shoe: "start_shoe",
       next_hand: "complete_hand",
     },
@@ -215,6 +218,10 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
       }
       left.pile = "A";
       right.pile = "B";
+      table.screen = {
+        ...table.screen,
+        active_split: `${event.seat}A`,
+      };
     } else if (event.type === "card_withdrawn" && table) {
       const last = live.at(-1);
       if (!last) {

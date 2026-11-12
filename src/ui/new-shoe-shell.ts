@@ -366,7 +366,8 @@ function renderSplit(
             `<div class="hand-total" style="color:${total.colour}">${total.label}</div>`,
         )
         .join("");
-      return `<div class="split-hand"><div class="split-label">${pile.hand}</div>${totals}<div class="hand" id="hand-${seat}${pile.hand}">${cards}</div></div>`;
+      const focused = felt.screen.active_split === `${seat}${pile.hand}`;
+      return `<div class="split-hand${focused ? " active" : ""}"><div class="split-label">${pile.hand}</div>${totals}<div class="hand" id="hand-${seat}${pile.hand}">${cards}</div></div>`;
     })
     .join("");
   return `<div class="split-container" id="split-${seat}" style="display:flex">${hands}</div>`;
