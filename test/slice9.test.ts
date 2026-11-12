@@ -8,6 +8,7 @@ import {
   FELT_PATH,
   OBSERVE_CARD_PATH,
   REMAINING_PATH,
+  SET_SUIT_PATH,
   START_SHOE_PATH,
   handleHttp,
   type HttpRequest,
@@ -22,6 +23,7 @@ import {
   TABLE_STREAM,
   createInMemoryEventStore,
 } from "../src/write/in-memory-store.ts";
+import { SEATS as derivedSeats } from "../src/write/events.ts";
 
 const SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"];
 
@@ -172,6 +174,44 @@ test("POST observe-card without a real rank and seat is 400 and does not append"
   assert.equal(store.read(TABLE_STREAM).length, before);
   const get = handleHttp(store, { method: "GET", path: OBSERVE_CARD_PATH });
   assert.equal(get.status, 404);
+});
+
+test("card seats follow the configured 7 player seats and reject a dealer split", () => {
+  assert.deepEqual(derivedSeats, ["D", "7", "6", "5", "4", "3", "2", "1"]);
+
+  const rejected = ["DA", "DB", "8A", "0A", "1C", "9B", "1a", "11A", ""];
+  const accepted = ["1A", "7B", "D", "1", "7"] as const;
+
+  for (const [path, error, field] of [
+    [OBSERVE_CARD_PATH, "rank_and_seat_required", "rank"],
+    [SET_SUIT_PATH, "suit_and_seat_required", "suit"],
+  ] as const) {
+    const store = createInMemoryEventStore();
+    const before = store.read(TABLE_STREAM);
+    for (const seat of rejected) {
+      const response = handleHttp(store, {
+        method: "POST",
+        path,
+        body: { [field]: field === "rank" ? "K" : "spades", seat },
+      });
+      assert.equal(response.status, 400, `${path} ${seat}`);
+      assert.deepEqual(response.body, { error });
+    }
+    assert.deepEqual(store.read(TABLE_STREAM), before);
+
+    for (const seat of accepted) {
+      const response = handleHttp(store, {
+        method: "POST",
+        path,
+        body: { [field]: field === "rank" ? "K" : "spades", seat },
+      });
+      assert.equal(response.status, 200, `${path} ${seat}`);
+    }
+    assert.deepEqual(
+      store.read(TABLE_STREAM).map((event) => ("seat" in event ? event.seat : "")),
+      [...accepted],
+    );
+  }
 });
 
 test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, pen, RA, and the outer ring", () => {

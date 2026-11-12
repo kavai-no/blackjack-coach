@@ -1,6 +1,7 @@
 import { handleHttp, type HttpRequest } from "../http/handle.ts";
 import { pickSuit, type RankSuitCount } from "../felt/pick-suit.ts";
 import { createNewShoeShell, type NewShoeShell } from "../ui/new-shoe-shell.ts";
+import { SEATS as IDLE_SEATS } from "../write/events.ts";
 import {
   TABLE_STREAM,
   createInMemoryEventStore,
@@ -32,8 +33,6 @@ type AppRoot = {
 type PageDocument = {
   querySelector(selector: string): AppRoot | null;
 };
-
-const IDLE_SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"] as const;
 
 /** Seats exist before any shoe. Hero class only. Focus ring waits for a click or NEW SHOE. */
 function idleSeatChrome(): string {

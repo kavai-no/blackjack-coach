@@ -2,7 +2,7 @@ import { RANKS, SUITS, type Rank, type Suit } from "../counting/maps.ts";
 import { projectCountsInfoBar } from "../read/counts-info-bar.ts";
 import { projectFeltTable } from "../read/felt-table.ts";
 import { projectRemainingComposition } from "../read/remaining-composition.ts";
-import { SEATS, type CardSeat, type Seat } from "../write/events.ts";
+import { PLAYER_SEATS, SEATS, type CardSeat, type Seat } from "../write/events.ts";
 import {
   TABLE_STREAM,
   type InMemoryEventStore,
@@ -212,11 +212,16 @@ function isSeat(value: unknown): value is Seat {
   return typeof value === "string" && (SEATS as readonly string[]).includes(value);
 }
 
-/** Table seat, or a split pile key such as `1A`. Not a new command field. */
+function isPlayerSeat(value: string): boolean {
+  return (PLAYER_SEATS as readonly string[]).includes(value);
+}
+
+/** Table seat, or a player split pile key such as `1A`. Dealer piles are not seats. */
 function isCardSeat(value: unknown): value is CardSeat {
   if (isSeat(value)) return true;
   if (typeof value !== "string" || value.length !== 2) return false;
   const hand = value[1];
   if (hand !== "A" && hand !== "B") return false;
-  return isSeat(value[0]);
+  const base = value[0];
+  return base !== undefined && isPlayerSeat(base);
 }

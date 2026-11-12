@@ -1,12 +1,29 @@
 import type { Rank, Suit } from "../counting/maps.ts";
 
-/** Felt order. Dealer is `D`, then seats 7…1. */
-export const SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"] as const;
+/** Player seats at the table. The dealer is not one of these and cannot split. */
+export const PLAYER_SEAT_COUNT = 7;
 
-export type Seat = (typeof SEATS)[number];
+type Enumerate<N extends number, Acc extends number[] = []> = Acc["length"] extends N
+  ? Acc[number]
+  : Enumerate<N, [...Acc, Acc["length"]]>;
 
-/** Table seat, or the split pile key the original stores on the card (`1A`). */
-export type CardSeat = Seat | `${Seat}${"A" | "B"}`;
+type SeatNumber = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+/** `"1"` … the configured count. Excludes the dealer. */
+export type PlayerSeat = `${SeatNumber[Enumerate<typeof PLAYER_SEAT_COUNT>]}`;
+
+export type Seat = "D" | PlayerSeat;
+
+export const PLAYER_SEATS: readonly PlayerSeat[] = Array.from(
+  { length: PLAYER_SEAT_COUNT },
+  (_, index) => `${index + 1}` as PlayerSeat,
+);
+
+/** Felt order. Dealer, then the highest player seat down to 1. */
+export const SEATS: readonly Seat[] = ["D", ...[...PLAYER_SEATS].reverse()];
+
+/** Table seat, or a player split pile key (`1A`). Never `DA` / `DB`. */
+export type CardSeat = Seat | `${PlayerSeat}${"A" | "B"}`;
 
 /** Earned facts. Later slices widen the union. */
 export type ShoeStarted = {
