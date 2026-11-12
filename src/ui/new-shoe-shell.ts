@@ -1,5 +1,5 @@
 import { RANKS, SUITS, type Rank, type Suit } from "../counting/maps.ts";
-import { SUIT_SYMBOL } from "../felt/mini-card-face.ts";
+import { SUIT_SYMBOL, displayRank } from "../felt/mini-card-face.ts";
 import {
   COUNTS_PATH,
   FELT_PATH,
@@ -373,10 +373,10 @@ function renderSplit(
         )
         .join("");
       const focused = felt.screen.active_split === `${seat}${pile.hand}`;
-      return `<div class="split-hand${focused ? " active" : ""}"><div class="split-label">${pile.hand}</div>${totals}<div class="hand" id="hand-${seat}${pile.hand}">${cards}</div></div>`;
+      return `<div class="split-hand${focused ? " active" : ""}"><div class="split-label">${pile.hand}</div><div class="hand" id="hand-${seat}${pile.hand}">${totals}${cards}</div></div>`;
     })
     .join("");
-  return `<div class="split-container" id="split-${seat}" style="display:flex">${hands}</div>`;
+  return `<div class="split-container" id="split-${seat}">${hands}</div>`;
 }
 
 /** Original `.split-btn#splitBtn-<seat>`. Omitted unless the felt says it is visible on the hero. */
@@ -388,12 +388,15 @@ function renderSplitButton(
   return `<button class="split-btn" id="splitBtn-${seat}" type="button">SPLIT</button>`;
 }
 
-/** Observed rank only. Suit stays unset — no suit symbol, no mini face. */
+/** Original `addCard` mini: corners and suit pips, no centre face. Ten is `T`. */
 function renderCard(card: FeltTable["seat_piles"][number]["cards"][number]): string {
+  const painted = displayRank(card.rank);
+  const corners = `<span class="corner top-left">${painted}</span><span class="corner bottom-right">${painted}</span>`;
   if (card.suit === null) {
-    return `<div class="mini rank-only" data-rank="${card.rank}" data-suit="">${card.rank}</div>`;
+    return `<div class="mini rank-only" data-rank="${card.rank}" data-suit="">${corners}</div>`;
   }
-  return `<div class="mini" data-rank="${card.rank}" data-suit="${card.suit}">${card.mini_card_face.face}</div>`;
+  const symbol = SUIT_SYMBOL[card.suit];
+  return `<div class="mini" data-rank="${card.rank}" data-suit="${card.suit}">${corners}<span class="suit top-right">${symbol}</span><span class="suit bottom-left">${symbol}</span></div>`;
 }
 
 function renderInfo(counts: CountsInfoBar): string {

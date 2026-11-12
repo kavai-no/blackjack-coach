@@ -301,7 +301,7 @@ test("GWT suit pad: press hearts on the last focus card paints the mini face and
   );
   assert.match(
     html,
-    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand-total" style="color:#ffd43f">Total: 15<\/div><div class="hand" id="hand-1"><div class="mini rank-only" data-rank="5" data-suit="">5<\/div><div class="mini" data-rank="K" data-suit="hearts">K♥<\/div><\/div><\/section>/,
+    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand-total" style="color:#ffd43f">Total: 15<\/div><div class="hand" id="hand-1"><div class="mini rank-only" data-rank="5" data-suit=""><span class="corner top-left">5<\/span><span class="corner bottom-right">5<\/span><\/div><div class="mini" data-rank="K" data-suit="hearts"><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><span class="suit top-right">♥<\/span><span class="suit bottom-left">♥<\/span><\/div><\/div><\/section>/,
   );
   for (const seat of SEATS) {
     if (seat === "1") continue;
@@ -350,7 +350,7 @@ test("GWT suit pad: press hearts on the last focus card paints the mini face and
   assert.deepEqual(projectCountsInfoBar(correctedEvents), countsBefore);
   assert.match(
     corrected.html,
-    /id="hand-1"><div class="mini rank-only" data-rank="5" data-suit="">5<\/div><div class="mini" data-rank="K" data-suit="diamonds">K♦<\/div><\/div>/,
+    /id="hand-1"><div class="mini rank-only" data-rank="5" data-suit=""><span class="corner top-left">5<\/span><span class="corner bottom-right">5<\/span><\/div><div class="mini" data-rank="K" data-suit="diamonds"><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><span class="suit top-right">♦<\/span><span class="suit bottom-left">♦<\/span><\/div><\/div>/,
   );
   assert.equal(corrected.html.includes("K♥"), false);
   assert.deepEqual(
@@ -385,10 +385,10 @@ test("GWT ten keeps a distinct rank and paints T with the suit", () => {
   assert.deepEqual(projectCountsInfoBar(events), before);
   assert.match(
     pressed.html,
-    /id="hand-1"><div class="mini" data-rank="10" data-suit="spades">T♠<\/div><\/div>/,
+    /id="hand-1"><div class="mini" data-rank="10" data-suit="spades"><span class="corner top-left">T<\/span><span class="corner bottom-right">T<\/span><span class="suit top-right">♠<\/span><span class="suit bottom-left">♠<\/span><\/div><\/div>/,
   );
   assert.equal(pressed.html.includes(">10♠<"), false);
-  assert.equal(pressed.html.includes(">T<"), false);
+  assert.equal(pressed.html.includes(">T<"), true);
 });
 
 test("suit press before a card, or a suit that is not on the pad, does not post", () => {
@@ -412,7 +412,7 @@ test("suit press before a card, or a suit that is not on the pad, does not post"
   assert.deepEqual(calls, []);
   assert.match(
     shell.html(),
-    /id="hand-1"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div>/,
+    /id="hand-1"><div class="mini rank-only" data-rank="K" data-suit=""><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><\/div><\/div>/,
   );
 
   shell.pressSuit("hearts");

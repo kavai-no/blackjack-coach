@@ -168,7 +168,7 @@ test("felt_pick_rank: NEW SHOE, click K, fixture 0 draws K♠", async () => {
     );
 
     await king.click();
-    await page.getByText("K♠", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-suit="spades"] .suit.top-right').waitFor();
     const history = await readHistory(page);
     assert.deepEqual(
       history.map((event) => event.type),
@@ -183,7 +183,8 @@ test("felt_pick_rank: NEW SHOE, click K, fixture 0 draws K♠", async () => {
 
     const card = page.locator("#hand-1 .mini");
     assert.equal(await card.count(), 1);
-    assert.equal((await card.innerText()).trim(), "K♠");
+    assert.equal((await card.locator(".corner.top-left").innerText()).trim(), "K");
+    assert.equal((await card.locator(".suit.top-right").innerText()).trim(), "♠");
     assert.equal(await card.getAttribute("data-rank"), "K");
     assert.equal(await card.getAttribute("data-suit"), "spades");
     assert.equal(
@@ -243,10 +244,10 @@ test("felt_set_suit: hearts corrects the drawn K♠ to K♥", async () => {
     await page.getByRole("button", { name: "NEW SHOE" }).click();
     await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
     await page.locator('#cardsGrid button[data-rank="K"]').click();
-    await page.getByText("K♠", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-suit="spades"]').waitFor();
 
     await page.locator('#suitGrid button[data-suit="hearts"]').click();
-    await page.getByText("K♥", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-suit="hearts"] .suit.top-right').waitFor();
 
     const history = await readHistory(page);
     assert.deepEqual(
@@ -260,7 +261,8 @@ test("felt_set_suit: hearts corrects the drawn K♠ to K♥", async () => {
 
     const card = page.locator("#hand-1 .mini");
     assert.equal(await card.count(), 1);
-    assert.equal((await card.innerText()).trim(), "K♥");
+    assert.equal((await card.locator(".corner.top-left").innerText()).trim(), "K");
+    assert.equal((await card.locator(".suit.top-right").innerText()).trim(), "♥");
     assert.equal(await card.getAttribute("data-rank"), "K");
     assert.equal(await card.getAttribute("data-suit"), "hearts");
     assert.equal(
@@ -315,7 +317,7 @@ test("felt total 21: K then A, hand-total colour is rgb(0 255 245)", async () =>
     await page.getByRole("button", { name: "NEW SHOE" }).click();
     await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
     await page.locator('#cardsGrid button[data-rank="K"]').click();
-    await page.getByText("K♠", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-suit="spades"]').waitFor();
     await page.locator('#cardsGrid button[data-rank="A"]').click();
     await page.getByText("Total: 21", { exact: true }).waitFor();
 
@@ -347,7 +349,7 @@ test("felt_pick_rank five: Hi-Lo true count is positive and has no plus", async 
     await page.getByRole("button", { name: "NEW SHOE" }).click();
     await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
     await page.locator('#cardsGrid button[data-rank="5"]').click();
-    await page.getByText("5♠", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-rank="5"][data-suit="spades"]').waitFor();
 
     const decksLeft = Math.max((8 * 52 - 1) / 52, 0.01);
     const trueCount = (rc: number) =>

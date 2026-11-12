@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Browser, type Locator, type Page } from "playwright";
 
 /**
  * Live Pages entry for slice 12. Serves `dist/` — the directory deploy.yml
@@ -137,6 +137,29 @@ async function text(page: Page, selector: string): Promise<string> {
   return (await page.locator(selector).innerText()).trim();
 }
 
+async function assertFace(card: Locator, rank: string, symbol: string): Promise<void> {
+  assert.equal((await card.locator(".corner.top-left").innerText()).trim(), rank);
+  assert.equal((await card.locator(".corner.bottom-right").innerText()).trim(), rank);
+  assert.equal((await card.locator(".suit.top-right").innerText()).trim(), symbol);
+  assert.equal((await card.locator(".suit.bottom-left").innerText()).trim(), symbol);
+  const loose = await card.evaluate((element) =>
+    [...element.childNodes]
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent ?? "")
+      .join("")
+      .trim(),
+  );
+  assert.equal(loose, "");
+}
+
+async function assertClearOf(part: Locator, cover: Locator): Promise<void> {
+  const partBox = await part.boundingBox();
+  const coverBox = await cover.boundingBox();
+  assert.ok(partBox);
+  assert.ok(coverBox);
+  assert.ok(partBox.y + partBox.height <= coverBox.y + 1);
+}
+
 async function infoBar(page: Page): Promise<Record<string, string>> {
   const bar = {
     p: await text(page, "#penetration"),
@@ -202,13 +225,13 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
 
     await clickSeat(page, "1");
     await page.locator('#cardsGrid button[data-rank="K"]').click();
-    await page.locator("#hand-1").getByText("K♠", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-suit="spades"] .suit.top-right').waitFor();
     await page.locator('#suitGrid button[data-suit="hearts"]').click();
-    await page.locator("#hand-1").getByText("K♥", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-suit="hearts"] .suit.top-right').waitFor();
 
     await clickSeat(page, "1");
     await page.locator('#cardsGrid button[data-rank="K"]').click();
-    await page.locator("#hand-1").getByText("K♠", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-suit="spades"] .suit.top-right').waitFor();
     assert.equal(await text(page, '[data-seat="1"] .hand-total'), "Total: 20");
     assert.equal(
       await page.locator('[data-seat="1"] .hand-total').evaluate((element) => getComputedStyle(element).color),
@@ -217,16 +240,32 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     assert.equal(await page.locator('[data-seat="1"] .hand-total').count(), 1);
     const cards = page.locator("#hand-1 .mini");
     assert.equal(await cards.count(), 2);
-    assert.equal((await cards.nth(0).innerText()).trim(), "K♥");
+    await assertFace(cards.nth(0), "K", "♥");
     assert.equal(await cards.nth(0).getAttribute("data-suit"), "hearts");
-    assert.equal((await cards.nth(1).innerText()).trim(), "K♠");
+    await assertFace(cards.nth(1), "K", "♠");
     assert.equal(await cards.nth(1).getAttribute("data-suit"), "spades");
+    assert.equal(
+      await cards.nth(0).evaluate((element) => getComputedStyle(element).color),
+      "rgb(220, 38, 38)",
+    );
+    assert.equal(
+      await cards.nth(1).evaluate((element) => getComputedStyle(element).color),
+      "rgb(0, 0, 0)",
+    );
+    assert.equal(await cards.nth(0).locator(".corner.top-left").isVisible(), true);
+    assert.equal(await cards.nth(0).locator(".suit.top-right").isVisible(), true);
+    await assertClearOf(cards.nth(0).locator(".corner.top-left"), cards.nth(1));
+    await assertClearOf(cards.nth(0).locator(".suit.top-right"), cards.nth(1));
 
     const split = page.locator("#splitBtn-1");
     assert.equal(await split.count(), 1);
     assert.equal(await split.isVisible(), true);
     assert.equal(await split.isEnabled(), true);
     assert.equal((await split.innerText()).trim(), "SPLIT");
+    assert.equal(
+      await split.evaluate((element) => getComputedStyle(element).backgroundColor),
+      "rgb(234, 88, 12)",
+    );
     assert.equal(await page.locator(".split-btn").count(), 1);
     assert.equal(await page.locator("#splitBtn-2").count(), 0);
     const before = await infoBar(page);
@@ -244,7 +283,7 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
 
     await split.click();
     await page.locator('#app[data-screen="felt_split"]').waitFor();
-    await page.locator("#hand-1A").getByText("K♥", { exact: true }).waitFor();
+    await page.locator('#hand-1A .mini[data-suit="hearts"] .corner.top-left').waitFor();
 
     const history = await readHistory(page);
     assert.deepEqual(
@@ -275,11 +314,11 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     const ace = page.locator("#hand-1A .mini");
     const bee = page.locator("#hand-1B .mini");
     assert.equal(await ace.count(), 1);
-    assert.equal((await ace.innerText()).trim(), "K♥");
+    await assertFace(ace, "K", "♥");
     assert.equal(await ace.getAttribute("data-rank"), "K");
     assert.equal(await ace.getAttribute("data-suit"), "hearts");
     assert.equal(await bee.count(), 1);
-    assert.equal((await bee.innerText()).trim(), "K♠");
+    await assertFace(bee, "K", "♠");
     assert.equal(await bee.getAttribute("data-rank"), "K");
     assert.equal(await bee.getAttribute("data-suit"), "spades");
     assert.equal((await page.locator("#split-1 .split-label").nth(0).innerText()).trim(), "A");
@@ -338,18 +377,26 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     await assertHeroSelected(page);
 
     await page.locator('#cardsGrid button[data-rank="5"]').click();
-    await page.locator("#hand-1A").getByText("5♠", { exact: true }).waitFor();
+    await page.locator('#hand-1A .mini[data-rank="5"][data-suit="spades"]').waitFor();
     const piled = page.locator("#hand-1A .mini");
     assert.equal(await piled.count(), 2);
-    assert.equal((await piled.nth(0).innerText()).trim(), "K♥");
+    await assertFace(piled.nth(0), "K", "♥");
     assert.equal(await piled.nth(0).getAttribute("data-suit"), "hearts");
-    assert.equal((await piled.nth(1).innerText()).trim(), "5♠");
+    await assertFace(piled.nth(1), "5", "♠");
     assert.equal(await piled.nth(1).getAttribute("data-rank"), "5");
     assert.equal(await piled.nth(1).getAttribute("data-suit"), "spades");
+    assert.equal(
+      await piled.nth(0).evaluate((element) => getComputedStyle(element).color),
+      "rgb(220, 38, 38)",
+    );
     assert.equal(
       await piled.nth(1).evaluate((element) => getComputedStyle(element).color),
       "rgb(0, 0, 0)",
     );
+    assert.equal(await piled.nth(0).locator(".corner.top-left").isVisible(), true);
+    assert.equal(await piled.nth(0).locator(".suit.top-right").isVisible(), true);
+    await assertClearOf(piled.nth(0).locator(".corner.top-left"), piled.nth(1));
+    await assertClearOf(piled.nth(0).locator(".suit.top-right"), piled.nth(1));
     const pileTotals = page.locator("#split-1 .hand-total");
     assert.equal((await pileTotals.nth(0).innerText()).trim(), "Total: 15");
     assert.equal(
@@ -357,7 +404,7 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
       "rgb(255, 212, 63)",
     );
     assert.equal((await pileTotals.nth(1).innerText()).trim(), "Total: 10");
-    assert.equal((await page.locator("#hand-1B .mini").innerText()).trim(), "K♠");
+    await assertFace(page.locator("#hand-1B .mini"), "K", "♠");
     assert.equal(await page.locator("#hand-1B .mini").count(), 1);
     assert.equal(await base.locator(".mini").count(), 0);
     assert.equal(await base.isVisible(), false);
@@ -527,10 +574,14 @@ test("felt_split: SPLIT stays hidden for 10+K", async () => {
 
     await clickSeat(page, "1");
     await page.locator('#cardsGrid button[data-rank="10"]').click();
-    await page.locator("#hand-1").getByText("T♠", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-rank="10"] .corner.top-left').waitFor();
+    assert.equal(
+      (await page.locator('#hand-1 .mini[data-rank="10"] .corner.top-left').innerText()).trim(),
+      "T",
+    );
     await clickSeat(page, "1");
     await page.locator('#cardsGrid button[data-rank="K"]').click();
-    await page.locator("#hand-1").getByText("K♠", { exact: true }).waitFor();
+    await page.locator('#hand-1 .mini[data-rank="K"] .suit.top-right').waitFor();
 
     assert.equal(await text(page, '[data-seat="1"] .hand-total'), "Total: 20");
     assert.equal(

@@ -292,7 +292,7 @@ test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", (
   const infoBefore = shell.html().match(/<section id="infoBar"[\s\S]*<\/section>/)?.[0];
   assert.match(
     shell.html(),
-    /<div class="hand" id="hand-1"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div><button class="split-btn" id="splitBtn-1" type="button">SPLIT<\/button>/,
+    /<div class="hand" id="hand-1"><div class="mini rank-only" data-rank="K" data-suit=""><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><\/div><div class="mini rank-only" data-rank="K" data-suit=""><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><\/div><\/div><button class="split-btn" id="splitBtn-1" type="button">SPLIT<\/button>/,
   );
   assert.equal(shell.html().includes("splitBtn-2"), false);
   assert.equal(shell.html().includes("splitBtn-D"), false);
@@ -345,7 +345,7 @@ test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", (
   );
   assert.match(
     html,
-    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand" id="hand-1" style="display:none"><\/div><div class="split-container" id="split-1" style="display:flex"><div class="split-hand active"><div class="split-label">A<\/div><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="hand" id="hand-1A"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div><\/div><div class="split-hand"><div class="split-label">B<\/div><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="hand" id="hand-1B"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div><\/div><\/div><\/section>/,
+    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand" id="hand-1" style="display:none"><\/div><div class="split-container" id="split-1"><div class="split-hand active"><div class="split-label">A<\/div><div class="hand" id="hand-1A"><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="mini rank-only" data-rank="K" data-suit=""><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><\/div><\/div><\/div><div class="split-hand"><div class="split-label">B<\/div><div class="hand" id="hand-1B"><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="mini rank-only" data-rank="K" data-suit=""><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><\/div><\/div><\/div><\/div><\/section>/,
   );
   for (const seat of SEATS) {
     if (seat === "1") continue;
@@ -392,7 +392,7 @@ test("GWT split button stays hidden for 10+K, one card, and three of a kind", ()
   assert.deepEqual(tenKing.calls, []);
   assert.match(
     tenKing.shell.html(),
-    /id="hand-1"><div class="mini rank-only" data-rank="10" data-suit="">10<\/div><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div><\/section>/,
+    /id="hand-1"><div class="mini rank-only" data-rank="10" data-suit=""><span class="corner top-left">T<\/span><span class="corner bottom-right">T<\/span><\/div><div class="mini rank-only" data-rank="K" data-suit=""><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><\/div><\/div><\/section>/,
   );
   assert.equal(
     tenKing.store.read(TABLE_STREAM).some((event) => event.type === "hand_split"),
@@ -465,11 +465,11 @@ test("GWT suited hero pair: split moves the faces onto A and B and leaves the sh
   );
   assert.match(
     pressed.html,
-    /id="hand-1A"><div class="mini" data-rank="K" data-suit="spades">K♠<\/div><\/div>/,
+    /id="hand-1A"><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="mini" data-rank="K" data-suit="spades"><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><span class="suit top-right">♠<\/span><span class="suit bottom-left">♠<\/span><\/div><\/div>/,
   );
   assert.match(
     pressed.html,
-    /id="hand-1B"><div class="mini" data-rank="K" data-suit="diamonds">K♦<\/div><\/div>/,
+    /id="hand-1B"><div class="hand-total" style="color:#ffd43f">Total: 10<\/div><div class="mini" data-rank="K" data-suit="diamonds"><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><span class="suit top-right">♦<\/span><span class="suit bottom-left">♦<\/span><\/div><\/div>/,
   );
   assert.match(pressed.html, /id="hand-1" style="display:none"><\/div>/);
   assert.equal(pressed.html.includes("splitBtn"), false);

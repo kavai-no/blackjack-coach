@@ -160,7 +160,8 @@ async function ringOn(page: Page, seat: string): Promise<boolean> {
 async function assertDealtKing(page: Page): Promise<void> {
   const card = page.locator("#hand-1 .mini");
   assert.equal(await card.count(), 1);
-  assert.equal((await card.innerText()).trim(), "K♠");
+  assert.equal((await card.locator(".corner.top-left").innerText()).trim(), "K");
+  assert.equal((await card.locator(".suit.top-right").innerText()).trim(), "♠");
   assert.equal(await card.getAttribute("data-rank"), "K");
   assert.equal(await card.getAttribute("data-suit"), "spades");
   const total = page.locator('[data-seat="1"] .hand-total');
@@ -289,7 +290,7 @@ async function dealKingThenFocusSeat2(page: Page): Promise<LiveEvent[]> {
   assert.equal(await king.isVisible(), true);
   assert.equal(await king.isEnabled(), true);
   await king.click();
-  await page.getByText("K♠", { exact: true }).waitFor();
+  await page.locator('#hand-1 .mini[data-suit="spades"]').waitFor();
 
   const seat2 = page.locator('[data-seat="2"] .seat-round');
   assert.equal(await seat2.isVisible(), true);
