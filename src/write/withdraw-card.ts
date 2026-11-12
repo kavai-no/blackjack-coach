@@ -1,5 +1,5 @@
 import type { Rank } from "../counting/maps.ts";
-import type { DomainEvent, Seat } from "./events.ts";
+import type { CardSeat, DomainEvent, Seat } from "./events.ts";
 import {
   TABLE_STREAM,
   type InMemoryEventStore,
@@ -8,7 +8,7 @@ import type { CommandAck } from "./start-shoe.ts";
 
 export type WithdrawCardCommand = {
   rank: Rank;
-  seat: Seat;
+  seat: CardSeat;
 };
 
 /**
@@ -47,8 +47,8 @@ export function withdrawCard(
 /** Cards still on the felt. Shoe started and Hand completed clear the hand. */
 function lastRegistered(
   history: readonly DomainEvent[],
-): { rank: Rank; seat: Seat } | undefined {
-  const cards: { rank: Rank; seat: Seat }[] = [];
+): { rank: Rank; seat: CardSeat } | undefined {
+  const cards: { rank: Rank; seat: CardSeat }[] = [];
 
   for (const event of history) {
     if (event.type === "shoe_started" || event.type === "hand_completed") {

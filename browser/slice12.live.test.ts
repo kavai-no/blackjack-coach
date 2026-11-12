@@ -303,16 +303,26 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     assert.equal(await pileA.evaluate((element) => element.classList.contains("active")), true);
     assert.equal(await pileB.evaluate((element) => element.classList.contains("active")), false);
     assert.equal(await page.locator(".split-hand.active").count(), 1);
-
-    const seats = await page.locator("[data-seat]").evaluateAll((nodes) =>
-      nodes.map((node) => node.getAttribute("data-seat")),
+    assert.equal(
+      await pileA.evaluate((element) => getComputedStyle(element).borderTopColor),
+      "rgb(34, 197, 94)",
     );
-    assert.deepEqual(seats, ["D", "7", "6", "5", "4", "3", "2", "1"]);
-    await assertHeroSelected(page);
-    for (const seat of ["D", "7", "6", "5", "4", "3", "2"]) {
-      assert.equal((await page.locator(`#hand-${seat}`).innerText()).trim(), "");
-    }
-
+    assert.notEqual(
+      await pileA.evaluate((element) => getComputedStyle(element).boxShadow),
+      "none",
+    );
+    assert.equal(
+      await pileB.evaluate((element) => getComputedStyle(element).borderTopColor),
+      "rgba(0, 0, 0, 0)",
+    );
+    assert.equal(
+      await ace.evaluate((element) => getComputedStyle(element).color),
+      "rgb(220, 38, 38)",
+    );
+    assert.equal(
+      await bee.evaluate((element) => getComputedStyle(element).color),
+      "rgb(0, 0, 0)",
+    );
     assert.deepEqual(await infoBar(page), before);
     for (const rank of RANKS) {
       assert.equal(
@@ -325,6 +335,89 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     assert.equal(await hoverSuit(page, "clubs"), "♣: 104");
     assert.equal(await hoverSuit(page, "hearts"), "♥: 103");
     assert.equal(await hoverSuit(page, "diamonds"), "♦: 104");
+    await assertHeroSelected(page);
+
+    await page.locator('#cardsGrid button[data-rank="5"]').click();
+    await page.locator("#hand-1A").getByText("5♠", { exact: true }).waitFor();
+    const piled = page.locator("#hand-1A .mini");
+    assert.equal(await piled.count(), 2);
+    assert.equal((await piled.nth(0).innerText()).trim(), "K♥");
+    assert.equal(await piled.nth(0).getAttribute("data-suit"), "hearts");
+    assert.equal((await piled.nth(1).innerText()).trim(), "5♠");
+    assert.equal(await piled.nth(1).getAttribute("data-rank"), "5");
+    assert.equal(await piled.nth(1).getAttribute("data-suit"), "spades");
+    assert.equal(
+      await piled.nth(1).evaluate((element) => getComputedStyle(element).color),
+      "rgb(0, 0, 0)",
+    );
+    const pileTotals = page.locator("#split-1 .hand-total");
+    assert.equal((await pileTotals.nth(0).innerText()).trim(), "Total: 15");
+    assert.equal(
+      await pileTotals.nth(0).evaluate((element) => getComputedStyle(element).color),
+      "rgb(255, 212, 63)",
+    );
+    assert.equal((await pileTotals.nth(1).innerText()).trim(), "Total: 10");
+    assert.equal((await page.locator("#hand-1B .mini").innerText()).trim(), "K♠");
+    assert.equal(await page.locator("#hand-1B .mini").count(), 1);
+    assert.equal(await base.locator(".mini").count(), 0);
+    assert.equal(await base.isVisible(), false);
+    assert.equal(await pileA.evaluate((element) => element.classList.contains("active")), false);
+    assert.equal(await page.locator(".split-hand.active").count(), 0);
+    assert.equal(
+      await page.locator('[data-seat="1"] .seat-round').evaluate((element) =>
+        element.classList.contains("active"),
+      ),
+      false,
+    );
+    assert.equal(
+      await page.locator('[data-seat="2"] .seat-round').evaluate((element) =>
+        element.classList.contains("active"),
+      ),
+      true,
+    );
+    assert.equal(await page.locator(".seat-round.active").count(), 1);
+    assert.equal(
+      await page.locator('[data-seat="1"] .seat-round').evaluate((element) =>
+        element.classList.contains("your-seat"),
+      ),
+      true,
+    );
+
+    const dealt = await readHistory(page);
+    assert.deepEqual(dealt.slice(-2).map((event) => event.type), [
+      "card_observed",
+      "card_suit_set",
+    ]);
+    assert.equal(dealt.at(-2)?.seat, "1A");
+    assert.equal(dealt.at(-2)?.rank, "5");
+    assert.equal(dealt.at(-1)?.seat, "1A");
+    assert.equal(dealt.at(-1)?.suit, "spades");
+    assert.deepEqual(await infoBar(page), {
+      p: "P: 0.72%",
+      d: "D: 7.94",
+      ra: "RA: -0.87",
+      hilo: "Hi-Lo: -1 / -0.13",
+      apc: "APC: -0.38",
+      zen: "Zen: -0.25",
+      omega: "Omega II: -0.25",
+      ace: "Ace: 0.03",
+    });
+    for (const rank of RANKS) {
+      const count = rank === "K" ? "30" : rank === "5" ? "31" : "32";
+      assert.equal((await rankLabel(page, rank).textContent())?.trim(), count, rank);
+    }
+    assert.equal(await hoverSuit(page, "spades"), "♠: 102");
+    assert.equal(await hoverSuit(page, "clubs"), "♣: 104");
+    assert.equal(await hoverSuit(page, "hearts"), "♥: 103");
+    assert.equal(await hoverSuit(page, "diamonds"), "♦: 104");
+
+    const seats = await page.locator("[data-seat]").evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("data-seat")),
+    );
+    assert.deepEqual(seats, ["D", "7", "6", "5", "4", "3", "2", "1"]);
+    for (const seat of ["D", "7", "6", "5", "4", "3", "2"]) {
+      assert.equal((await page.locator(`#hand-${seat}`).innerText()).trim(), "");
+    }
 
     await clickSeat(page, "2");
     const seat2 = page.locator('[data-seat="2"] .seat-round');
@@ -354,6 +447,8 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
         "card_observed",
         "card_suit_set",
         "hand_split",
+        "card_observed",
+        "card_suit_set",
         "hand_completed",
         "shoe_started",
       ],

@@ -134,7 +134,10 @@ test("repo-root index.html is the Pages entry and does not paint parked chrome",
   assert.match(css, /#infoBar\b/);
   assert.match(css, /#combinedChart\b/);
   assert.match(css, /\.seat-round\b/);
-  assert.equal(PARKS.test(css), false);
+  assert.equal(
+    /RoR|Wong|21\+3|Perfect Pair|sidebet|SURRENDER|compDep|heatSim|useKelly|Expert/i.test(css),
+    false,
+  );
 
   const deploy = readRoot(".github/workflows/deploy.yml");
   assert.match(deploy, /actions\/upload-pages-artifact@v3/);

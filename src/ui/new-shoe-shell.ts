@@ -84,6 +84,10 @@ export function createNewShoeShell(
   let focusSeat: FeltTable["screen"]["focus_seat"] = "1";
   let heroSeat: FeltTable["screen"]["hero_seat"] = "1";
   let splitReady = false;
+  /** Original `activeSplit`. The next rank posts this pile key, or the focus seat. */
+  let activeSplit: FeltTable["screen"]["active_split"] = null;
+  /** Seat of the card the suit pad still corrects. Survives the auto-advance. */
+  let openSeat: FeltTable["screen"]["focus_seat"] | NonNullable<FeltTable["screen"]["active_split"]> = "1";
   /** Rank + seat posted by this shell, oldest first. Not a count fold. */
   const registered: { rank: Rank; seat: string }[] = [];
 
@@ -124,7 +128,7 @@ export function createNewShoeShell(
     pressRank(rank: string) {
       if (!shoeLive || !isPadRank(rank)) return { rejected: true };
 
-      const seat = focusSeat;
+      const seat = activeSplit ?? focusSeat;
       const post = handle({
         method: "POST",
         path: OBSERVE_CARD_PATH,
@@ -145,7 +149,8 @@ export function createNewShoeShell(
       );
       rememberFelt(felt);
       registered.push({ rank, seat });
-      focusHasCard = registered.some((card) => card.seat === focusSeat);
+      openSeat = seat;
+      focusHasCard = true;
       page = renderNewShoe(felt, counts, remaining);
       return { rejected: false, post, html: page };
     },
@@ -156,7 +161,7 @@ export function createNewShoeShell(
       const post = handle({
         method: "POST",
         path: SET_SUIT_PATH,
-        body: { suit, seat: focusSeat },
+        body: { suit, seat: openSeat },
       });
       if (post.status !== 200) {
         throw new Error(`set_suit HTTP ${post.status}`);
@@ -263,6 +268,7 @@ export function createNewShoeShell(
     focusSeat = felt.screen.focus_seat;
     heroSeat = felt.screen.hero_seat;
     splitReady = felt.screen.split_button_visible;
+    activeSplit = felt.screen.active_split;
   }
 }
 

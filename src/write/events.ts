@@ -5,6 +5,9 @@ export const SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"] as const;
 
 export type Seat = (typeof SEATS)[number];
 
+/** Table seat, or the split pile key the original stores on the card (`1A`). */
+export type CardSeat = Seat | `${Seat}${"A" | "B"}`;
+
 /** Earned facts. Later slices widen the union. */
 export type ShoeStarted = {
   type: "shoe_started";
@@ -15,18 +18,18 @@ export type HandCompleted = {
   type: "hand_completed";
 };
 
-/** Rank landed on a seat. Suit is not on this fact. */
+/** Rank landed on a seat or split pile. Suit is not on this fact. */
 export type CardObserved = {
   type: "card_observed";
   rank: Rank;
-  seat: Seat;
+  seat: CardSeat;
 };
 
-/** Suit for the latest observe on a seat. No rank — the seat targets that card. */
+/** Suit for the latest observe on a seat or split pile. No rank — the seat targets that card. */
 export type CardSuitSet = {
   type: "card_suit_set";
   suit: Suit;
-  seat: Seat;
+  seat: CardSeat;
 };
 
 /** Hero seat split into piles A and B. Counts and remaining do not change. */
@@ -43,7 +46,7 @@ export type HandSplit = {
 export type CardWithdrawn = {
   type: "card_withdrawn";
   rank: Rank;
-  seat: Seat;
+  seat: CardSeat;
 };
 
 export type DomainEvent =

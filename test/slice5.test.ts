@@ -356,3 +356,52 @@ test("GWT remaining unchanged by split alone", () => {
     [103, 104, 104, 103],
   );
 });
+
+test("GWT felt decodes seat 1A onto pile A, then the two-card pile advances left", () => {
+  const store = dealt([
+    { rank: "K", seat: "1" },
+    { rank: "K", seat: "1" },
+  ]);
+  splitHand(store, { seat: "1" });
+  observeCard(store, { rank: "5", seat: "1A" });
+  setSuit(store, { suit: "spades", seat: "1A" });
+
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  const ace = felt.split_piles.find((pile) => pile.hand === "A");
+  const bee = felt.split_piles.find((pile) => pile.hand === "B");
+  assert.equal(ace?.seat, "1");
+  assert.deepEqual(
+    ace?.cards.map((card) => card.rank),
+    ["K", "5"],
+  );
+  const five = ace?.cards[1];
+  assert.equal(five && "suit" in five ? five.suit : null, "spades");
+  assert.equal(five && "mini_card_face" in five ? five.mini_card_face.face : "", "5♠");
+  assert.deepEqual(
+    bee?.cards.map((card) => card.rank),
+    ["K"],
+  );
+  assert.deepEqual(felt.seat_piles.find((pile) => pile.seat === "1")?.cards, []);
+  assert.equal(felt.screen.active_split, null);
+  assert.equal(felt.screen.focus_seat, "2");
+  assert.equal(felt.screen.hero_seat, "1");
+  assert.equal(
+    felt.hand_totals.find((total) => total.hand === "A")?.label,
+    "Total: 15",
+  );
+  assert.equal(
+    felt.hand_totals.find((total) => total.hand === "A")?.colour,
+    "#ffd43f",
+  );
+  assert.equal(
+    felt.hand_totals.find((total) => total.hand === "B")?.label,
+    "Total: 10",
+  );
+  const history = store.read(TABLE_STREAM);
+  const observed = history.at(-2);
+  const suited = history.at(-1);
+  assert.equal(observed?.type, "card_observed");
+  assert.equal(observed?.type === "card_observed" ? observed.seat : "", "1A");
+  assert.equal(suited?.type, "card_suit_set");
+  assert.equal(suited?.type === "card_suit_set" ? suited.seat : "", "1A");
+});

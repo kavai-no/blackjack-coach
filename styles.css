@@ -85,6 +85,56 @@ body {
   box-shadow: 0 0 0 4px #00ff88, 0 0 20px #22c55e88;
 }
 .hand { min-height: 12px; width: 100%; }
+.mini {
+  width: 35px;
+  height: 46px;
+  background: linear-gradient(135deg, #fff, #f0f0f0);
+  border-radius: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px #0008, inset 0 0 20px rgba(255, 255, 255, 0.1);
+  border: 2px solid #333;
+  position: relative;
+  color: #000;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+.mini + .mini { margin-top: -25px; }
+.mini[data-suit="hearts"],
+.mini[data-suit="diamonds"] { color: #dc2626; }
+.mini[data-suit="spades"],
+.mini[data-suit="clubs"] { color: #000; }
+.corner { position: absolute; font-size: 0.65rem; line-height: 1; }
+.corner.top-left { top: 2px; left: 3px; }
+.corner.bottom-right { bottom: 2px; right: 3px; transform: rotate(180deg); }
+.suit.top-right { position: absolute; top: 2px; right: 3px; font-size: 0.7rem; line-height: 1; }
+.suit.bottom-left { position: absolute; bottom: 2px; left: 3px; font-size: 0.7rem; line-height: 1; }
+.split-container { display: flex; width: 100%; gap: 2px; }
+.split-hand {
+  flex: 1;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  padding: 2px;
+  min-width: 0;
+}
+.split-hand.active { border-color: #22c55e; box-shadow: 0 0 15px #22c55e44; }
+.split-hand:last-of-type { margin-left: 2px; }
+.split-label { text-align: center; font-size: 0.65rem; line-height: 1; opacity: 0.8; }
+.split-btn {
+  margin-top: 4px;
+  background: #166534;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 2px 6px;
+  font: inherit;
+  font-weight: bold;
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+.split-btn:active { transform: scale(0.96); }
 #infoBar { margin: 8px; display: grid; gap: 8px; }
 .info-top {
   display: flex;
