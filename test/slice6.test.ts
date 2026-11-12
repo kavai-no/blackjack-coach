@@ -92,18 +92,15 @@ test("GWT withdraw_card_happy: shoe + observe → card_withdrawn rank+seat, no s
   assert.equal("mini_card_face" in result, false);
 });
 
-test("GWT withdraw targets the last registered card, not an older one", () => {
+test("GWT withdraw targets the last card of the named pile, not an older card in it", () => {
   const store = shoeOnly();
   observeCard(store, { rank: "5", seat: "1" });
+  observeCard(store, { rank: "K", seat: "1" });
   observeCard(store, { rank: "K", seat: "D" });
   const before = store.read(TABLE_STREAM).map((event) => event.type);
 
   assert.throws(
     () => withdrawCard(store, { rank: "5", seat: "1" }),
-    /last registered/,
-  );
-  assert.throws(
-    () => withdrawCard(store, { rank: "K", seat: "1" }),
     /last registered/,
   );
   assert.throws(
@@ -115,19 +112,25 @@ test("GWT withdraw targets the last registered card, not an older one", () => {
     before,
   );
 
-  const result = withdrawCard(store, { rank: "K", seat: "D" });
-  assert.equal(result.events[0]?.type, "card_withdrawn");
-  assert.equal(result.position, 4);
-  if (result.events[0]?.type === "card_withdrawn") {
-    assert.equal(result.events[0].rank, "K");
-    assert.equal(result.events[0].seat, "D");
+  // Locked 2026-11-07: seat 1's last card is K, even though dealer was observed later.
+  const olderPile = withdrawCard(store, { rank: "K", seat: "1" });
+  assert.equal(olderPile.events[0]?.type, "card_withdrawn");
+  if (olderPile.events[0]?.type === "card_withdrawn") {
+    assert.equal(olderPile.events[0].rank, "K");
+    assert.equal(olderPile.events[0].seat, "1");
   }
 
-  const next = withdrawCard(store, { rank: "5", seat: "1" });
-  assert.equal(next.position, 5);
-  if (next.events[0]?.type === "card_withdrawn") {
-    assert.equal(next.events[0].rank, "5");
-    assert.equal(next.events[0].seat, "1");
+  const dealer = withdrawCard(store, { rank: "K", seat: "D" });
+  assert.equal(dealer.events[0]?.type, "card_withdrawn");
+  if (dealer.events[0]?.type === "card_withdrawn") {
+    assert.equal(dealer.events[0].seat, "D");
+  }
+
+  const five = withdrawCard(store, { rank: "5", seat: "1" });
+  assert.equal(five.events[0]?.type, "card_withdrawn");
+  if (five.events[0]?.type === "card_withdrawn") {
+    assert.equal(five.events[0].rank, "5");
+    assert.equal(five.events[0].seat, "1");
   }
   assert.throws(
     () => withdrawCard(store, { rank: "5", seat: "1" }),
@@ -139,6 +142,8 @@ test("GWT withdraw targets the last registered card, not an older one", () => {
       "shoe_started",
       "card_observed",
       "card_observed",
+      "card_observed",
+      "card_withdrawn",
       "card_withdrawn",
       "card_withdrawn",
     ],
@@ -237,11 +242,11 @@ test("GWT felt: last registered card leaves the split pile it landed in", () => 
   ]);
 
   assert.throws(
-    () => withdrawCard(store, { rank: "6", seat: "D" }),
-    /last registered/,
+    () => withdrawCard(store, { rank: "K", seat: "1" }),
+    /requires a registered card/,
   );
 
-  withdrawCard(store, { rank: "K", seat: "1" });
+  withdrawCard(store, { rank: "K", seat: "1B" });
   const felt = projectFeltTable(store.read(TABLE_STREAM));
 
   assert.equal(felt.seat_order, "D,7,6,5,4,3,2,1");

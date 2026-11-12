@@ -32,13 +32,19 @@ type AppRoot = {
 
 type PageDocument = {
   querySelector(selector: string): AppRoot | null;
+  addEventListener?(
+    type: string,
+    listener: (event: { key?: string; preventDefault?: () => void }) => void,
+  ): void;
 };
 
 /** Seats exist before any shoe. Hero class only. Focus ring waits for a click or NEW SHOE. */
-function idleSeatChrome(): string {
+function idleSeatChrome(focus: string | null): string {
   return IDLE_SEATS.map((seat) => {
-    const round = seat === "1" ? "seat-round your-seat" : "seat-round";
-    return `<section class="seat" data-seat="${seat}"><div class="${round}">${seat}</div><div class="hand" id="hand-${seat}"></div></section>`;
+    const classes = ["seat-round"];
+    if (seat === focus) classes.push("active");
+    if (seat === "1") classes.push("your-seat");
+    return `<section class="seat" data-seat="${seat}"><div class="${classes.join(" ")}">${seat}</div><div class="hand" id="hand-${seat}"></div></section>`;
   }).join("");
 }
 
@@ -46,7 +52,7 @@ function idleSeatChrome(): string {
  * NEW SHOE / NEXT HAND screen. `#cardsGrid` and `#suitGrid` stay mounted.
  * This page does not strip either pad.
  */
-export function presentNewShoeFragment(fragment: string): string {
+export function presentNewShoeFragment(fragment: string, focus: string | null = null): string {
   return fragment
     .replace(
       '<button id="shuffleBtn" type="button">NEW SHOE</button>\n<button id="nextHandBtn" type="button">NEXT HAND</button>',
@@ -67,7 +73,7 @@ export function presentNewShoeFragment(fragment: string): string {
     )
     .replace(
       '<div class="table" id="table"></div>',
-      `<div class="table" id="table">${idleSeatChrome()}</div>`,
+      `<div class="table" id="table">${idleSeatChrome(focus)}</div>`,
     );
 }
 
@@ -93,7 +99,7 @@ export function mountNewShoePage(
 
   let screen = "felt_idle_no_events";
   const paint = () => {
-    root.innerHTML = presentNewShoeFragment(shell.html());
+    root.innerHTML = presentNewShoeFragment(shell.html(), shell.focusKey());
     root.querySelector("#shuffleBtn")?.addEventListener("click", () => {
       const result = shell.pressNewShoe();
       if (!result.cancelled) {
@@ -110,10 +116,18 @@ export function mountNewShoePage(
     bindSplit(root, shell, paint, () => {
       screen = "felt_split";
     });
-    bindFocus(root);
+    bindFocus(root, shell, paint);
+    bindWithdraw(root, shell, paint);
     bindChartTips(root);
     root.setAttribute("data-screen", screen);
   };
+
+  document.addEventListener?.("keydown", (event) => {
+    if (event.key !== "Backspace") return;
+    event.preventDefault?.();
+    const result = shell.pressWithdraw();
+    if (!result.rejected) paint();
+  });
 
   paint();
   return store;
@@ -158,6 +172,7 @@ function bindRankPad(
       if (observed.rejected) return;
       const suit = pickSuit(rank, rankSuitCells(observed.html), random);
       shell.pressSuit(suit);
+      shell.advanceFocus();
       paint();
     });
   }
@@ -200,15 +215,27 @@ function bindSuitPad(root: AppRoot, shell: NewShoeShell, paint: () => void): voi
   }
 }
 
-/** Focus ring is UI chrome. Clicking a seat header does not append an event. */
-function bindFocus(root: AppRoot): void {
+/** Focus ring is UI chrome. A header click tells the shell the withdraw pile. */
+function bindFocus(root: AppRoot, shell: NewShoeShell, paint: () => void): void {
   const rounds = Array.from(root.querySelectorAll(".seat-round"));
-  for (const round of rounds) {
+  const seats = IDLE_SEATS;
+  for (let index = 0; index < rounds.length; index += 1) {
+    const round = rounds[index];
+    const seat = seats[index];
+    if (!round || !seat) continue;
     round.addEventListener("click", () => {
-      for (const other of rounds) other.classList.remove("active");
-      round.classList.add("active");
+      shell.pressSeat(seat);
+      paint();
     });
   }
+}
+
+/** Backspace key and the shell's #backspaceBtn. Not click-delete of an older card. */
+function bindWithdraw(root: AppRoot, shell: NewShoeShell, paint: () => void): void {
+  root.querySelector("#backspaceBtn")?.addEventListener("click", () => {
+    const result = shell.pressWithdraw();
+    if (!result.rejected) paint();
+  });
 }
 
 /** Rank or suit slice hover shows the projection tooltip. No command. */

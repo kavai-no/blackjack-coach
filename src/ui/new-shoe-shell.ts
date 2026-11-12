@@ -59,10 +59,24 @@ export type NewShoeShell = {
   /** Hero `#splitBtn-1` → Split hand. Seat only. */
   pressSplit(): SplitPress;
   /**
-   * Backspace → withdraw the last card this shell registered.
-   * Posts rank + seat only. Does not fold counts or scan the stream.
+   * Backspace → withdraw the resolved card.
+   * After a manual seat click, that pile's last card.
+   * After observation auto-advance, the last card this shell registered.
+   * An empty manual pile posts nothing. Focus does not move.
    */
   pressWithdraw(): WithdrawPress;
+  /** Header click. Split seats walk due piles A then B. UI only. */
+  pressSeat(seat: string): void;
+  /**
+   * Ordinary-seat auto-advance after the last Observe.
+   * The live page calls this. Focus stays on a 3rd+ player card
+   * and on a 2nd+ dealer card. Seat 7's second card and the dealer's
+   * first card jump to seat 1. Split pile A at 2 cards moves left.
+   * Split pile B does not auto-advance to A.
+   */
+  advanceFocus(): void;
+  /** UI focus pile, or null before NEW SHOE and before any header click. */
+  focusKey(): string | null;
   /**
    * `#nextHandBtn` → Complete hand. No body.
    * Felt comes back from the felt view. Counts and remaining are not folded here.
@@ -81,19 +95,31 @@ export function createNewShoeShell(
   let page = renderIdle();
   let shoeLive = false;
   let focusHasCard = false;
-  let focusSeat: FeltTable["screen"]["focus_seat"] = "1";
   let heroSeat: FeltTable["screen"]["hero_seat"] = "1";
   let splitReady = false;
-  /** Original `activeSplit`. The next rank posts this pile key, or the focus seat. */
-  let activeSplit: FeltTable["screen"]["active_split"] = null;
+  /** UI focus. Null until NEW SHOE or a header click. Not an event. */
+  let uiFocus: string | null = null;
+  /** Manual header click targets the focused pile. Observation targets the last card. */
+  let provenance: "manual" | "observation" = "observation";
+  /** Next header click on a split seat: A first, then B. */
+  const dueHand = new Map<string, "A" | "B">();
+  const splitBases = new Set<string>();
   /** Seat of the card the suit pad still corrects. Survives the auto-advance. */
-  let openSeat: FeltTable["screen"]["focus_seat"] | NonNullable<FeltTable["screen"]["active_split"]> = "1";
+  let openSeat = "1";
   /** Rank + seat posted by this shell, oldest first. Not a count fold. */
   const registered: { rank: Rank; seat: string }[] = [];
+  let feltNow: FeltTable | null = null;
+  let countsNow: CountsInfoBar | null = null;
+  let remainingNow: RemainingComposition | null = null;
+  let lastDeal: { seat: string; length: number } | null = null;
 
   return {
     html() {
       return page;
+    },
+
+    focusKey() {
+      return uiFocus;
     },
 
     pressNewShoe() {
@@ -120,15 +146,20 @@ export function createNewShoeShell(
       shoeLive = true;
       registered.length = 0;
       focusHasCard = false;
-      rememberFelt(felt);
-      page = renderNewShoe(felt, counts, remaining);
+      openSeat = "1";
+      uiFocus = "1";
+      provenance = "observation";
+      dueHand.clear();
+      lastDeal = null;
+      rememberViews(felt, counts, remaining);
+      page = renderNewShoe(felt, counts, remaining, uiFocus);
       return { cancelled: false, post, html: page };
     },
 
     pressRank(rank: string) {
       if (!shoeLive || !isPadRank(rank)) return { rejected: true };
 
-      const seat = activeSplit ?? focusSeat;
+      const seat = uiFocus ?? "1";
       const post = handle({
         method: "POST",
         path: OBSERVE_CARD_PATH,
@@ -147,11 +178,12 @@ export function createNewShoeShell(
         handle({ method: "GET", path: REMAINING_PATH }),
         "remaining",
       );
-      rememberFelt(felt);
+      rememberViews(felt, counts, remaining);
       registered.push({ rank, seat });
       openSeat = seat;
       focusHasCard = true;
-      page = renderNewShoe(felt, counts, remaining);
+      lastDeal = { seat, length: pileLength(felt, seat) };
+      page = renderNewShoe(felt, counts, remaining, uiFocus);
       return { rejected: false, post, html: page };
     },
 
@@ -176,8 +208,8 @@ export function createNewShoeShell(
         handle({ method: "GET", path: REMAINING_PATH }),
         "remaining",
       );
-      rememberFelt(felt);
-      page = renderNewShoe(felt, counts, remaining);
+      rememberViews(felt, counts, remaining);
+      page = renderNewShoe(felt, counts, remaining, uiFocus);
       return { rejected: false, post, html: page };
     },
 
@@ -202,25 +234,47 @@ export function createNewShoeShell(
         handle({ method: "GET", path: REMAINING_PATH }),
         "remaining",
       );
-      rememberFelt(felt);
-      page = renderNewShoe(felt, counts, remaining);
+      rekeySplit(heroSeat);
+      uiFocus = `${heroSeat}A`;
+      rememberViews(felt, counts, remaining);
+      page = renderNewShoe(felt, counts, remaining, uiFocus);
       return { rejected: false, post, html: page };
     },
 
+    pressSeat(seat: string) {
+      if (!isPlainSeat(seat)) return;
+      if (splitBases.has(seat)) {
+        const due = dueHand.get(seat) ?? "A";
+        uiFocus = `${seat}${due}`;
+        dueHand.set(seat, due === "A" ? "B" : "A");
+      } else {
+        uiFocus = seat;
+      }
+      provenance = "manual";
+      repaint();
+    },
+
+    advanceFocus() {
+      if (!lastDeal) return;
+      uiFocus = nextFocus(lastDeal.seat, lastDeal.length);
+      provenance = "observation";
+      repaint();
+    },
+
     pressWithdraw() {
-      const last = registered.at(-1);
-      if (!shoeLive || !last) return { rejected: true };
+      const target = withdrawTarget();
+      if (!shoeLive || !target) return { rejected: true };
 
       const post = handle({
         method: "POST",
         path: WITHDRAW_CARD_PATH,
-        body: { rank: last.rank, seat: last.seat },
+        body: { rank: target.rank, seat: target.seat },
       });
       if (post.status !== 200) {
         throw new Error(`withdraw_card HTTP ${post.status}`);
       }
 
-      registered.pop();
+      dropRegistered(target.rank, target.seat);
       const felt = view<FeltTable>(handle({ method: "GET", path: FELT_PATH }), "felt");
       const counts = view<CountsInfoBar>(
         handle({ method: "GET", path: COUNTS_PATH }),
@@ -230,9 +284,9 @@ export function createNewShoeShell(
         handle({ method: "GET", path: REMAINING_PATH }),
         "remaining",
       );
-      rememberFelt(felt);
-      focusHasCard = registered.some((card) => card.seat === focusSeat);
-      page = renderNewShoe(felt, counts, remaining);
+      rememberViews(felt, counts, remaining);
+      focusHasCard = registered.some((card) => card.seat === openSeat);
+      page = renderNewShoe(felt, counts, remaining, uiFocus);
       return { rejected: false, post, html: page };
     },
 
@@ -258,17 +312,68 @@ export function createNewShoeShell(
       );
       registered.length = 0;
       focusHasCard = false;
-      rememberFelt(felt);
-      page = renderNewShoe(felt, counts, remaining);
+      openSeat = "1";
+      uiFocus = "1";
+      provenance = "observation";
+      dueHand.clear();
+      lastDeal = null;
+      rememberViews(felt, counts, remaining);
+      page = renderNewShoe(felt, counts, remaining, uiFocus);
       return { rejected: false, post, html: page };
     },
   };
 
-  function rememberFelt(felt: FeltTable) {
-    focusSeat = felt.screen.focus_seat;
+  function withdrawTarget(): { rank: Rank; seat: string } | undefined {
+    if (provenance === "manual") {
+      if (!uiFocus) return undefined;
+      for (let index = registered.length - 1; index >= 0; index -= 1) {
+        const card = registered[index];
+        if (card && card.seat === uiFocus) return card;
+      }
+      return undefined;
+    }
+    return registered.at(-1);
+  }
+
+  function dropRegistered(rank: Rank, seat: string): void {
+    for (let index = registered.length - 1; index >= 0; index -= 1) {
+      const card = registered[index];
+      if (card && card.rank === rank && card.seat === seat) {
+        registered.splice(index, 1);
+        return;
+      }
+    }
+  }
+
+  function rekeySplit(base: string): void {
+    const hits = registered.filter((card) => card.seat === base);
+    if (hits.length !== 2) return;
+    let seen = 0;
+    for (const card of registered) {
+      if (card.seat !== base) continue;
+      card.seat = seen === 0 ? `${base}A` : `${base}B`;
+      seen += 1;
+    }
+    if (openSeat === base) openSeat = `${base}B`;
+  }
+
+  function rememberViews(
+    felt: FeltTable,
+    counts: CountsInfoBar,
+    remaining: RemainingComposition,
+  ): void {
+    feltNow = felt;
+    countsNow = counts;
+    remainingNow = remaining;
     heroSeat = felt.screen.hero_seat;
     splitReady = felt.screen.split_button_visible;
-    activeSplit = felt.screen.active_split;
+    splitBases.clear();
+    for (const pile of felt.split_piles) splitBases.add(pile.seat);
+  }
+
+  function repaint(): void {
+    if (!shoeLive || !feltNow || !countsNow || !remainingNow) return;
+    page = renderNewShoe(feltNow, countsNow, remainingNow, uiFocus);
   }
 }
 
@@ -315,6 +420,59 @@ function isPadSuit(value: string): value is Suit {
   return (SUITS as readonly string[]).includes(value);
 }
 
+function isPlainSeat(value: string): boolean {
+  return value === "D" || /^[1-7]$/.test(value);
+}
+
+/** Dealing order for moveLeft: 1 → 2 → … → 7 → dealer → 1. */
+const MOVE_LEFT = ["1", "2", "3", "4", "5", "6", "7", "D"] as const;
+
+function moveLeft(seat: string): string {
+  const index = MOVE_LEFT.indexOf(seat as (typeof MOVE_LEFT)[number]);
+  if (index < 0) return "1";
+  return MOVE_LEFT[(index + 1) % MOVE_LEFT.length] ?? "1";
+}
+
+/** No seat is disabled in this slice, so the first playing seat is 1. */
+function firstPlayingSeat(): string {
+  return "1";
+}
+
+/**
+ * Focus after an Observe. Ordinary seats move left at 1 or 2 cards.
+ * Seat 7's second card and the dealer's first card jump to seat 1.
+ * A 3rd+ player card and a 2nd+ dealer card stay. Split A at exactly
+ * 2 cards moves left (not to B). Any other split pile stays.
+ */
+function nextFocus(seat: string, length: number): string {
+  if (seat.length === 2 && (seat.endsWith("A") || seat.endsWith("B"))) {
+    if (seat.endsWith("A") && length === 2) return moveLeft(seat.slice(0, 1));
+    return seat;
+  }
+  if (seat === "D") return length === 1 ? firstPlayingSeat() : "D";
+  if (length <= 0) return seat;
+  if (length === 1) return moveLeft(seat);
+  if (length === 2) return seat === "7" ? firstPlayingSeat() : moveLeft(seat);
+  return seat;
+}
+
+function pileLength(felt: FeltTable, seat: string): number {
+  if (seat.length === 2 && (seat.endsWith("A") || seat.endsWith("B"))) {
+    const hand = seat.endsWith("A") ? "A" : "B";
+    const base = seat.slice(0, 1);
+    return (
+      felt.split_piles.find((pile) => pile.seat === base && pile.hand === hand)?.cards
+        .length ?? 0
+    );
+  }
+  return felt.seat_piles.find((pile) => pile.seat === seat)?.cards.length ?? 0;
+}
+
+function focusBase(focus: string | null): string | null {
+  if (!focus) return null;
+  return focus.length === 2 ? focus.slice(0, 1) : focus;
+}
+
 function renderIdle(): string {
   // Idle chart and info bar. freshShoe* is not written to the store.
   return frame(
@@ -326,8 +484,9 @@ function renderNewShoe(
   felt: FeltTable,
   counts: CountsInfoBar,
   remaining: RemainingComposition,
+  focus: string | null,
 ): string {
-  const seats = felt.seat_piles.map((pile) => renderSeat(felt, pile)).join("\n");
+  const seats = felt.seat_piles.map((pile) => renderSeat(felt, pile, focus)).join("\n");
   return frame(
     `<div id="table">\n${seats}\n</div>\n${renderInfo(counts)}\n${renderDonut(remaining)}`,
   );
@@ -336,9 +495,10 @@ function renderNewShoe(
 function renderSeat(
   felt: FeltTable,
   pile: FeltTable["seat_piles"][number],
+  focus: string | null,
 ): string {
   const classes = ["seat-round"];
-  if (pile.seat === felt.screen.focus_seat) classes.push("active");
+  if (pile.seat === focusBase(focus)) classes.push("active");
   if (pile.seat === felt.screen.hero_seat) classes.push("your-seat");
   const split = felt.split_piles.filter((item) => item.seat === pile.seat);
   const cards = split.length === 0 ? pile.cards.map((card) => renderCard(card)).join("") : "";
@@ -353,13 +513,14 @@ function renderSeat(
           .join("")
       : "";
   const hidden = split.length > 0 ? ` style="display:none"` : "";
-  return `<section class="seat" data-seat="${pile.seat}"><div class="${classes.join(" ")}">${pile.seat}</div>${totals}<div class="hand" id="hand-${pile.seat}"${hidden}>${cards}</div>${renderSplit(felt, pile.seat, split)}${renderSplitButton(felt, pile.seat)}</section>`;
+  return `<section class="seat" data-seat="${pile.seat}"><div class="${classes.join(" ")}">${pile.seat}</div>${totals}<div class="hand" id="hand-${pile.seat}"${hidden}>${cards}</div>${renderSplit(felt, pile.seat, split, focus)}${renderSplitButton(felt, pile.seat)}</section>`;
 }
 
 function renderSplit(
   felt: FeltTable,
   seat: FeltTable["seat_piles"][number]["seat"],
   piles: FeltTable["split_piles"],
+  focus: string | null,
 ): string {
   if (piles.length === 0) return "";
   const hands = piles
@@ -372,7 +533,7 @@ function renderSplit(
             `<div class="hand-total" style="color:${total.colour}">${total.label}</div>`,
         )
         .join("");
-      const focused = felt.screen.active_split === `${seat}${pile.hand}`;
+      const focused = focus === `${seat}${pile.hand}`;
       return `<div class="split-hand${focused ? " active" : ""}"><div class="split-label">${pile.hand}</div><div class="hand" id="hand-${seat}${pile.hand}">${totals}${cards}</div></div>`;
     })
     .join("");
