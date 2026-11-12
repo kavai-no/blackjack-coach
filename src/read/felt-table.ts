@@ -1,7 +1,7 @@
 import type { Rank, Suit } from "../counting/maps.ts";
 import { piledCard } from "../felt/piled-card.ts";
 import type { MiniCardFace } from "../felt/mini-card-face.ts";
-import { SEATS, type DomainEvent, type Seat } from "../write/events.ts";
+import { SEATS, type CardSeat, type DomainEvent, type Seat } from "../write/events.ts";
 
 export type FeltSeat = Seat;
 
@@ -43,9 +43,11 @@ export type FeltTable = {
   hand_totals: HandTotal[];
   /** UI chrome from the felt screen contract. Not events. */
   screen: {
-    focus_seat: "1";
+    focus_seat: FeltSeat;
     hero_seat: "1";
     split_button_visible: boolean;
+    /** Original `activeSplit`. Pile A of the seat that split. Null when none is live. */
+    active_split: `${FeltSeat}A` | null;
     new_shoe: "start_shoe";
     next_hand: "complete_hand";
   };
@@ -61,6 +63,7 @@ function emptyFelt(): FeltTable {
       focus_seat: "1",
       hero_seat: "1",
       split_button_visible: false,
+      active_split: null,
       new_shoe: "start_shoe",
       next_hand: "complete_hand",
     },
@@ -166,23 +169,40 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
       live.length = 0;
       table = emptyFelt();
     } else if (event.type === "card_observed" && table) {
-      const pile = table.seat_piles.find((seat) => seat.seat === event.seat);
-      if (!pile) {
-        throw new Error(`no felt pile for seat ${event.seat}`);
+      const decoded = decodeCardSeat(event.seat);
+      if (decoded.hand === "main") {
+        const pile = table.seat_piles.find((seat) => seat.seat === decoded.seat);
+        if (!pile) {
+          throw new Error(`no felt pile for seat ${event.seat}`);
+        }
+        pile.cards.push({ rank: event.rank, suit: null });
+        live.push({ seat: event.seat, pile: "main" });
+      } else {
+        let split = table.split_piles.find(
+          (pile) => pile.seat === decoded.seat && pile.hand === decoded.hand,
+        );
+        if (!split) {
+          split = { seat: decoded.seat, hand: decoded.hand, cards: [] };
+          table.split_piles = [...table.split_piles, split];
+        }
+        split.cards.push({ rank: event.rank, suit: null });
+        live.push({ seat: event.seat, pile: decoded.hand });
+        if (table.screen.active_split === event.seat && split.cards.length >= 2) {
+          table.screen = {
+            ...table.screen,
+            active_split: null,
+            focus_seat: seatToTheLeft(decoded.seat),
+          };
+        }
       }
-      pile.cards.push({ rank: event.rank, suit: null });
-      live.push({ seat: event.seat, pile: "main" });
     } else if (event.type === "card_suit_set" && table) {
-      const pile = table.seat_piles.find((seat) => seat.seat === event.seat);
-      if (!pile) {
-        throw new Error(`no felt pile for seat ${event.seat}`);
-      }
-      const index = pile.cards.length - 1;
-      const card = pile.cards[index];
+      const cards = cardsForSeat(table, event.seat);
+      const index = cards.length - 1;
+      const card = cards[index];
       if (!card) {
         throw new Error(`no observed card on seat ${event.seat}`);
       }
-      pile.cards[index] = piledCard(card.rank, event.suit);
+      cards[index] = piledCard(card.rank, event.suit);
     } else if (event.type === "hand_split" && table) {
       const pile = table.seat_piles.find((seat) => seat.seat === event.seat);
       if (!pile) {
@@ -215,6 +235,10 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
       }
       left.pile = "A";
       right.pile = "B";
+      table.screen = {
+        ...table.screen,
+        active_split: `${event.seat}A`,
+      };
     } else if (event.type === "card_withdrawn" && table) {
       const last = live.at(-1);
       if (!last) {
@@ -236,21 +260,55 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
   return withHandTotals(table);
 }
 
-type LiveCard = { seat: FeltSeat; pile: "main" | "A" | "B" };
+type LiveCard = { seat: CardSeat; pile: "main" | "A" | "B" };
 
-function cardsFor(table: FeltTable, live: LiveCard): FeltCard[] {
-  if (live.pile === "main") {
-    const pile = table.seat_piles.find((seat) => seat.seat === live.seat);
+function decodeCardSeat(seat: CardSeat): {
+  seat: FeltSeat;
+  hand: "main" | "A" | "B";
+} {
+  if (seat.length === 2 && (seat.endsWith("A") || seat.endsWith("B"))) {
+    return {
+      seat: seat.slice(0, 1) as FeltSeat,
+      hand: seat.endsWith("A") ? "A" : "B",
+    };
+  }
+  return { seat: seat as FeltSeat, hand: "main" };
+}
+
+/** Next seat toward the dealer. Felt order is D,7..1, so left of 1 is 2. */
+function seatToTheLeft(seat: FeltSeat): FeltSeat {
+  const index = SEATS.indexOf(seat);
+  return SEATS[index - 1] ?? seat;
+}
+
+function cardsForSeat(table: FeltTable, seat: CardSeat): FeltCard[] {
+  const decoded = decodeCardSeat(seat);
+  if (decoded.hand === "main") {
+    const pile = table.seat_piles.find((item) => item.seat === decoded.seat);
     if (!pile) {
-      throw new Error(`no felt pile for seat ${live.seat}`);
+      throw new Error(`no felt pile for seat ${seat}`);
     }
     return pile.cards;
   }
   const split = table.split_piles.find(
-    (pile) => pile.seat === live.seat && pile.hand === live.pile,
+    (pile) => pile.seat === decoded.seat && pile.hand === decoded.hand,
   );
   if (!split) {
-    throw new Error(`no split pile ${live.pile} for seat ${live.seat}`);
+    throw new Error(`no split pile ${decoded.hand} for seat ${decoded.seat}`);
+  }
+  return split.cards;
+}
+
+function cardsFor(table: FeltTable, live: LiveCard): FeltCard[] {
+  if (live.pile === "main") {
+    return cardsForSeat(table, live.seat);
+  }
+  const base = decodeCardSeat(live.seat).seat;
+  const split = table.split_piles.find(
+    (pile) => pile.seat === base && pile.hand === live.pile,
+  );
+  if (!split) {
+    throw new Error(`no split pile ${live.pile} for seat ${base}`);
   }
   return split.cards;
 }

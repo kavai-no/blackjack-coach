@@ -1,6 +1,7 @@
 import { handleHttp, type HttpRequest } from "../http/handle.ts";
 import { pickSuit, type RankSuitCount } from "../felt/pick-suit.ts";
 import { createNewShoeShell, type NewShoeShell } from "../ui/new-shoe-shell.ts";
+import { SEATS as IDLE_SEATS } from "../write/events.ts";
 import {
   TABLE_STREAM,
   createInMemoryEventStore,
@@ -32,8 +33,6 @@ type AppRoot = {
 type PageDocument = {
   querySelector(selector: string): AppRoot | null;
 };
-
-const IDLE_SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"] as const;
 
 /** Seats exist before any shoe. Hero class only. Focus ring waits for a click or NEW SHOE. */
 function idleSeatChrome(): string {
@@ -108,6 +107,9 @@ export function mountNewShoePage(
     });
     bindRankPad(root, shell, paint, random);
     bindSuitPad(root, shell, paint);
+    bindSplit(root, shell, paint, () => {
+      screen = "felt_split";
+    });
     bindFocus(root);
     bindChartTips(root);
     root.setAttribute("data-screen", screen);
@@ -168,6 +170,22 @@ function rankSuitCells(html: string): RankSuitCount[] {
   if (!json) throw new Error("remaining view missing");
   const view = JSON.parse(json) as { remaining_by_rank_suit?: RankSuitCount[] };
   return view.remaining_by_rank_suit ?? [];
+}
+
+/** Hero `#splitBtn-1` → split hand. The button is absent unless felt shows it. */
+function bindSplit(
+  root: AppRoot,
+  shell: NewShoeShell,
+  paint: () => void,
+  showSplit: () => void,
+): void {
+  root.querySelector("#splitBtn-1")?.addEventListener("click", () => {
+    const result = shell.pressSplit();
+    if (!result.rejected) {
+      showSplit();
+      paint();
+    }
+  });
 }
 
 /** Suit pad → POST set-suit on the focus seat. Rejected when no card is there. */

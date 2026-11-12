@@ -300,7 +300,7 @@ test("GWT Backspace withdraws the last registered card and restores counts and r
   );
   assert.match(
     shell.html(),
-    /id="hand-1"><div class="mini" data-rank="A" data-suit="hearts">A♥<\/div><\/div>/,
+    /id="hand-1"><div class="mini" data-rank="A" data-suit="hearts"><span class="corner top-left">A<\/span><span class="corner bottom-right">A<\/span><span class="suit top-right">♥<\/span><span class="suit bottom-left">♥<\/span><\/div><\/div>/,
   );
   calls.length = 0;
 
@@ -455,7 +455,7 @@ test("GWT withdraw removes only the last card; an older card and its suit stay",
   );
   assert.match(
     pressed.html,
-    /id="hand-1"><div class="mini" data-rank="K" data-suit="spades">K♠<\/div><\/div>/,
+    /id="hand-1"><div class="mini" data-rank="K" data-suit="spades"><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><span class="suit top-right">♠<\/span><span class="suit bottom-left">♠<\/span><\/div><\/div>/,
   );
   assert.equal(/id="hand-1">[^]*data-rank="5"/.test(pressed.html), false);
   assert.equal(felt.screen.focus_seat, "1");
@@ -475,7 +475,10 @@ test("GWT withdraw removes only the last card; an older card and its suit stay",
     moved.remaining_by_suit.find((slice) => slice.suit === "hearts")?.count,
     103,
   );
-  assert.match(suited.html, /data-rank="K" data-suit="hearts">K♥/);
+  assert.match(
+    suited.html,
+    /data-rank="K" data-suit="hearts"><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><span class="suit top-right">♥<\/span><span class="suit bottom-left">♥<\/span>/,
+  );
 });
 
 test("withdraw-card boundary reuses withdrawCard and does not re-derive counts or open a network server", () => {

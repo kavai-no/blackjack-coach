@@ -1,6 +1,6 @@
 import { RANKS, type Rank, type Suit } from "../counting/maps.ts";
 import { SHOE_DECKS } from "./counts-info-bar.ts";
-import { SEATS, type DomainEvent, type Seat } from "../write/events.ts";
+import { type CardSeat, type DomainEvent } from "../write/events.ts";
 
 /** Donut draw order (HCL inner pie), not `state.js` storage order. */
 const SUIT_DRAW = [
@@ -130,10 +130,10 @@ export function projectRemainingComposition(
         suit: null,
         seat: event.seat,
       };
-      tracked[event.seat].push(card);
+      cardsOn(tracked, event.seat).push(card);
       order.push(card);
     } else if (event.type === "card_suit_set" && composition) {
-      const card = tracked[event.seat].at(-1);
+      const card = cardsOn(tracked, event.seat).at(-1);
       if (!card) {
         throw new Error(`no observed card on seat ${event.seat}`);
       }
@@ -148,7 +148,7 @@ export function projectRemainingComposition(
         throw new Error("card_withdrawn is not the last registered card");
       }
       order.pop();
-      const seatCards = tracked[card.seat];
+      const seatCards = cardsOn(tracked, card.seat);
       const index = seatCards.lastIndexOf(card);
       if (index < 0) {
         throw new Error(`no tracked card on seat ${card.seat}`);
@@ -186,12 +186,16 @@ export function freshShoeRemaining(): RemainingComposition {
   ]);
 }
 
-type TrackedCard = { rank: Rank; suit: Suit | null; seat: Seat };
+type TrackedCard = { rank: Rank; suit: Suit | null; seat: CardSeat };
 
-function emptyTracked(): Record<Seat, TrackedCard[]> {
-  const tracked = {} as Record<Seat, TrackedCard[]>;
-  for (const seat of SEATS) tracked[seat] = [];
-  return tracked;
+function emptyTracked(): Record<string, TrackedCard[]> {
+  return {};
+}
+
+function cardsOn(tracked: Record<string, TrackedCard[]>, seat: CardSeat): TrackedCard[] {
+  const list = tracked[seat] ?? [];
+  tracked[seat] = list;
+  return list;
 }
 
 function moveSuit(

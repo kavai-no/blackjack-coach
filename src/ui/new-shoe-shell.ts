@@ -1,5 +1,5 @@
 import { RANKS, SUITS, type Rank, type Suit } from "../counting/maps.ts";
-import { SUIT_SYMBOL } from "../felt/mini-card-face.ts";
+import { SUIT_SYMBOL, displayRank } from "../felt/mini-card-face.ts";
 import {
   COUNTS_PATH,
   FELT_PATH,
@@ -84,6 +84,10 @@ export function createNewShoeShell(
   let focusSeat: FeltTable["screen"]["focus_seat"] = "1";
   let heroSeat: FeltTable["screen"]["hero_seat"] = "1";
   let splitReady = false;
+  /** Original `activeSplit`. The next rank posts this pile key, or the focus seat. */
+  let activeSplit: FeltTable["screen"]["active_split"] = null;
+  /** Seat of the card the suit pad still corrects. Survives the auto-advance. */
+  let openSeat: FeltTable["screen"]["focus_seat"] | NonNullable<FeltTable["screen"]["active_split"]> = "1";
   /** Rank + seat posted by this shell, oldest first. Not a count fold. */
   const registered: { rank: Rank; seat: string }[] = [];
 
@@ -124,7 +128,7 @@ export function createNewShoeShell(
     pressRank(rank: string) {
       if (!shoeLive || !isPadRank(rank)) return { rejected: true };
 
-      const seat = focusSeat;
+      const seat = activeSplit ?? focusSeat;
       const post = handle({
         method: "POST",
         path: OBSERVE_CARD_PATH,
@@ -145,7 +149,8 @@ export function createNewShoeShell(
       );
       rememberFelt(felt);
       registered.push({ rank, seat });
-      focusHasCard = registered.some((card) => card.seat === focusSeat);
+      openSeat = seat;
+      focusHasCard = true;
       page = renderNewShoe(felt, counts, remaining);
       return { rejected: false, post, html: page };
     },
@@ -156,7 +161,7 @@ export function createNewShoeShell(
       const post = handle({
         method: "POST",
         path: SET_SUIT_PATH,
-        body: { suit, seat: focusSeat },
+        body: { suit, seat: openSeat },
       });
       if (post.status !== 200) {
         throw new Error(`set_suit HTTP ${post.status}`);
@@ -263,6 +268,7 @@ export function createNewShoeShell(
     focusSeat = felt.screen.focus_seat;
     heroSeat = felt.screen.hero_seat;
     splitReady = felt.screen.split_button_visible;
+    activeSplit = felt.screen.active_split;
   }
 }
 
@@ -366,10 +372,11 @@ function renderSplit(
             `<div class="hand-total" style="color:${total.colour}">${total.label}</div>`,
         )
         .join("");
-      return `<div class="split-hand"><div class="split-label">${pile.hand}</div>${totals}<div class="hand" id="hand-${seat}${pile.hand}">${cards}</div></div>`;
+      const focused = felt.screen.active_split === `${seat}${pile.hand}`;
+      return `<div class="split-hand${focused ? " active" : ""}"><div class="split-label">${pile.hand}</div><div class="hand" id="hand-${seat}${pile.hand}">${totals}${cards}</div></div>`;
     })
     .join("");
-  return `<div class="split-container" id="split-${seat}" style="display:flex">${hands}</div>`;
+  return `<div class="split-container" id="split-${seat}">${hands}</div>`;
 }
 
 /** Original `.split-btn#splitBtn-<seat>`. Omitted unless the felt says it is visible on the hero. */
@@ -381,12 +388,15 @@ function renderSplitButton(
   return `<button class="split-btn" id="splitBtn-${seat}" type="button">SPLIT</button>`;
 }
 
-/** Observed rank only. Suit stays unset — no suit symbol, no mini face. */
+/** Original `addCard` mini: corners and suit pips, no centre face. Ten is `T`. */
 function renderCard(card: FeltTable["seat_piles"][number]["cards"][number]): string {
+  const painted = displayRank(card.rank);
+  const corners = `<span class="corner top-left">${painted}</span><span class="corner bottom-right">${painted}</span>`;
   if (card.suit === null) {
-    return `<div class="mini rank-only" data-rank="${card.rank}" data-suit="">${card.rank}</div>`;
+    return `<div class="mini rank-only" data-rank="${card.rank}" data-suit="">${corners}</div>`;
   }
-  return `<div class="mini" data-rank="${card.rank}" data-suit="${card.suit}">${card.mini_card_face.face}</div>`;
+  const symbol = SUIT_SYMBOL[card.suit];
+  return `<div class="mini" data-rank="${card.rank}" data-suit="${card.suit}">${corners}<span class="suit top-right">${symbol}</span><span class="suit bottom-left">${symbol}</span></div>`;
 }
 
 function renderInfo(counts: CountsInfoBar): string {

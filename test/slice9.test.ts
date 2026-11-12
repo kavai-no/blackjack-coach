@@ -8,6 +8,7 @@ import {
   FELT_PATH,
   OBSERVE_CARD_PATH,
   REMAINING_PATH,
+  SET_SUIT_PATH,
   START_SHOE_PATH,
   handleHttp,
   type HttpRequest,
@@ -22,6 +23,7 @@ import {
   TABLE_STREAM,
   createInMemoryEventStore,
 } from "../src/write/in-memory-store.ts";
+import { SEATS as derivedSeats } from "../src/write/events.ts";
 
 const SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"];
 
@@ -174,6 +176,44 @@ test("POST observe-card without a real rank and seat is 400 and does not append"
   assert.equal(get.status, 404);
 });
 
+test("card seats follow the configured 7 player seats and reject a dealer split", () => {
+  assert.deepEqual(derivedSeats, ["D", "7", "6", "5", "4", "3", "2", "1"]);
+
+  const rejected = ["DA", "DB", "8A", "0A", "1C", "9B", "1a", "11A", ""];
+  const accepted = ["1A", "7B", "D", "1", "7"] as const;
+
+  for (const [path, error, field] of [
+    [OBSERVE_CARD_PATH, "rank_and_seat_required", "rank"],
+    [SET_SUIT_PATH, "suit_and_seat_required", "suit"],
+  ] as const) {
+    const store = createInMemoryEventStore();
+    const before = store.read(TABLE_STREAM);
+    for (const seat of rejected) {
+      const response = handleHttp(store, {
+        method: "POST",
+        path,
+        body: { [field]: field === "rank" ? "K" : "spades", seat },
+      });
+      assert.equal(response.status, 400, `${path} ${seat}`);
+      assert.deepEqual(response.body, { error });
+    }
+    assert.deepEqual(store.read(TABLE_STREAM), before);
+
+    for (const seat of accepted) {
+      const response = handleHttp(store, {
+        method: "POST",
+        path,
+        body: { [field]: field === "rank" ? "K" : "spades", seat },
+      });
+      assert.equal(response.status, 200, `${path} ${seat}`);
+    }
+    assert.deepEqual(
+      store.read(TABLE_STREAM).map((event) => ("seat" in event ? event.seat : "")),
+      [...accepted],
+    );
+  }
+});
+
 test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, pen, RA, and the outer ring", () => {
   const { store, calls, shell } = wired();
   const idle = shell.html();
@@ -275,7 +315,7 @@ test("GWT rank pad: press A on focus seat 1 paints rank only and moves counts, p
   );
   assert.match(
     html,
-    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand-total" style="color:#ffd43f">Total: 11<\/div><div class="hand" id="hand-1"><div class="mini rank-only" data-rank="A" data-suit="">A<\/div><\/div><\/section>/,
+    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand-total" style="color:#ffd43f">Total: 11<\/div><div class="hand" id="hand-1"><div class="mini rank-only" data-rank="A" data-suit=""><span class="corner top-left">A<\/span><span class="corner bottom-right">A<\/span><\/div><\/div><\/section>/,
   );
   for (const seat of SEATS) {
     if (seat === "1") continue;
@@ -357,7 +397,7 @@ test("GWT king is not a ten, and a second rank press stays on focus seat 1", () 
   );
   assert.match(
     king.html,
-    /id="hand-1"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><\/div>/,
+    /id="hand-1"><div class="mini rank-only" data-rank="K" data-suit=""><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><\/div><\/div>/,
   );
   assert.equal(king.html.includes(">T<"), false);
   assert.equal(king.html.includes('data-rank="10"'), true);
@@ -391,7 +431,7 @@ test("GWT king is not a ten, and a second rank press stays on focus seat 1", () 
   assert.equal(felt.hand_totals.find((total) => total.seat === "1")?.total, 15);
   assert.match(
     five.html,
-    /id="hand-1"><div class="mini rank-only" data-rank="K" data-suit="">K<\/div><div class="mini rank-only" data-rank="5" data-suit="">5<\/div><\/div>/,
+    /id="hand-1"><div class="mini rank-only" data-rank="K" data-suit=""><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><\/div><div class="mini rank-only" data-rank="5" data-suit=""><span class="corner top-left">5<\/span><span class="corner bottom-right">5<\/span><\/div><\/div>/,
   );
   assert.match(five.html, /class="seat-round active your-seat">1</);
   assert.equal(five.html.match(/seat-round active/g)?.length, 1);

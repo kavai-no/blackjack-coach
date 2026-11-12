@@ -2,7 +2,7 @@ import { RANKS, SUITS, type Rank, type Suit } from "../counting/maps.ts";
 import { projectCountsInfoBar } from "../read/counts-info-bar.ts";
 import { projectFeltTable } from "../read/felt-table.ts";
 import { projectRemainingComposition } from "../read/remaining-composition.ts";
-import { SEATS, type Seat } from "../write/events.ts";
+import { PLAYER_SEATS, SEATS, type CardSeat, type Seat } from "../write/events.ts";
 import {
   TABLE_STREAM,
   type InMemoryEventStore,
@@ -172,22 +172,22 @@ function readDecks(body: unknown): number | undefined {
 }
 
 /** Rank and seat only. Extra fields (suit) are not forwarded. */
-function readObserveCard(body: unknown): { rank: Rank; seat: Seat } | undefined {
+function readObserveCard(body: unknown): { rank: Rank; seat: CardSeat } | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   if (!("rank" in body) || !("seat" in body)) return undefined;
   const rank = (body as { rank: unknown }).rank;
   const seat = (body as { seat: unknown }).seat;
-  if (!isRank(rank) || !isSeat(seat)) return undefined;
+  if (!isRank(rank) || !isCardSeat(seat)) return undefined;
   return { rank, seat };
 }
 
 /** Suit and seat only. Extra fields (rank) are not forwarded. */
-function readSetSuit(body: unknown): { suit: Suit; seat: Seat } | undefined {
+function readSetSuit(body: unknown): { suit: Suit; seat: CardSeat } | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   if (!("suit" in body) || !("seat" in body)) return undefined;
   const suit = (body as { suit: unknown }).suit;
   const seat = (body as { seat: unknown }).seat;
-  if (!isSuit(suit) || !isSeat(seat)) return undefined;
+  if (!isSuit(suit) || !isCardSeat(seat)) return undefined;
   return { suit, seat };
 }
 
@@ -210,4 +210,18 @@ function isSuit(value: unknown): value is Suit {
 
 function isSeat(value: unknown): value is Seat {
   return typeof value === "string" && (SEATS as readonly string[]).includes(value);
+}
+
+function isPlayerSeat(value: string): boolean {
+  return (PLAYER_SEATS as readonly string[]).includes(value);
+}
+
+/** Table seat, or a player split pile key such as `1A`. Dealer piles are not seats. */
+function isCardSeat(value: unknown): value is CardSeat {
+  if (isSeat(value)) return true;
+  if (typeof value !== "string" || value.length !== 2) return false;
+  const hand = value[1];
+  if (hand !== "A" && hand !== "B") return false;
+  const base = value[0];
+  return base !== undefined && isPlayerSeat(base);
 }

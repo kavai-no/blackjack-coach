@@ -1,5 +1,5 @@
 import type { Rank } from "../counting/maps.ts";
-import type { Seat } from "./events.ts";
+import type { CardSeat } from "./events.ts";
 import {
   TABLE_STREAM,
   type InMemoryEventStore,
@@ -8,7 +8,7 @@ import type { CommandAck } from "./start-shoe.ts";
 
 export type ObserveCardCommand = {
   rank: Rank;
-  seat: Seat;
+  seat: CardSeat;
 };
 
 /**
