@@ -19,6 +19,7 @@ type BoundNode = {
   classList: ClassList;
   hidden?: boolean;
   textContent: string | null;
+  style: { display: string };
   getAttribute(name: string): string | null;
   addEventListener(type: string, listener: () => void): void;
 };
@@ -103,7 +104,10 @@ export function mountNewShoePage(
     });
     root.querySelector("#nextHandBtn")?.addEventListener("click", () => {
       const result = shell.pressNextHand();
-      if (!result.rejected) paint();
+      if (!result.rejected) {
+        paint();
+        restoreNextHandLayout(root);
+      }
     });
     bindRankPad(root, shell, paint, random);
     bindSuitPad(root, shell, paint);
@@ -117,6 +121,20 @@ export function mountNewShoePage(
 
   paint();
   return store;
+}
+
+/**
+ * Original next-hand clear (script.js:194-195), after the felt re-render.
+ * Split containers are already gone with `split_piles`. Ordinary `.hand`
+ * is set back to flex. Focus is literal seat 1 from the felt projection.
+ */
+function restoreNextHandLayout(root: AppRoot): void {
+  for (const node of Array.from(root.querySelectorAll(".split-container"))) {
+    node.style.display = "none";
+  }
+  for (const node of Array.from(root.querySelectorAll(".hand"))) {
+    node.style.display = "flex";
+  }
 }
 
 /** `store.read` of the mounted table stream. Copies only — no writer, no second store. */
