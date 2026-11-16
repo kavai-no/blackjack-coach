@@ -845,3 +845,69 @@ test("felt_table_new_shoe_clears_stale_totals", () => {
   assert.deepEqual(felt.hand_totals, []);
 });
 
+test("GWT card_observed drops a stale seat total", () => {
+  const store = createInMemoryEventStore();
+  store.append(TABLE_STREAM, [
+    { type: "shoe_started", decks: 8 },
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+    { type: "card_withdrawn", rank: "8", seat: "1" },
+  ]);
+  const emptied = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(emptied.hand_totals, [
+    {
+      seat: "1",
+      total: 8,
+      colour: "#ffd43f",
+      label: "Total: 8",
+      stale: true,
+      card_total: 0,
+    },
+  ]);
+
+  store.append(TABLE_STREAM, [
+    { type: "card_observed", rank: "K", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+  ]);
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(felt.seat_piles.find((pile) => pile.seat === "1")?.cards, [
+    piledCard("K", "spades"),
+  ]);
+  assert.deepEqual(felt.hand_totals, [
+    { seat: "1", total: 10, colour: "#ffd43f", label: "Total: 10" },
+  ]);
+  assert.equal(felt.hand_totals.some((hand) => hand.stale), false);
+});
+
+test("GWT hand_split drops a stale base-seat total", () => {
+  const store = createInMemoryEventStore();
+  store.append(TABLE_STREAM, [
+    { type: "shoe_started", decks: 8 },
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+    { type: "card_withdrawn", rank: "8", seat: "1" },
+  ]);
+  assert.equal(projectFeltTable(store.read(TABLE_STREAM)).hand_totals[0]?.stale, true);
+
+  store.append(TABLE_STREAM, [
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "hearts", seat: "1" },
+    { type: "hand_split", seat: "1" },
+  ]);
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(felt.split_piles, [
+    { seat: "1", hand: "A", cards: [piledCard("8", "spades")] },
+    { seat: "1", hand: "B", cards: [piledCard("8", "hearts")] },
+  ]);
+  assert.deepEqual(felt.hand_totals, [
+    { seat: "1", hand: "A", total: 8, colour: "#ffd43f", label: "Total: 8" },
+    { seat: "1", hand: "B", total: 8, colour: "#ffd43f", label: "Total: 8" },
+  ]);
+  assert.equal(
+    felt.hand_totals.some((hand) => hand.hand === undefined || hand.stale),
+    false,
+  );
+});
+

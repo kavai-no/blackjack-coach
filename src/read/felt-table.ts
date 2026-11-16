@@ -195,7 +195,9 @@ function heroPairVisible(table: FeltTable): boolean {
  * Card withdrawn removes the last card of the named pile,
  * even when a later card sits on another pile.
  * An emptied pile keeps the total it showed before that card left
- * (`stale`, `card_total` 0). Shoe started clears those labels too.
+ * (`stale`, `card_total` 0) only while that pile stays empty.
+ * A card observed on that key drops the mark, and a split drops the
+ * base seat's mark. Shoe started and hand completed clear them too.
  */
 export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
   let seenShoe = false;
@@ -221,6 +223,8 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
           throw new Error(`no felt pile for seat ${event.seat}`);
         }
         pile.cards.push({ rank: event.rank, suit: null });
+        // A live card replaces a stale total. The mark belongs only to an emptied pile.
+        stale.delete(event.seat);
         live.push({ seat: event.seat, pile: "main" });
       } else {
         let split = table.split_piles.find(
@@ -231,6 +235,7 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
           table.split_piles = [...table.split_piles, split];
         }
         split.cards.push({ rank: event.rank, suit: null });
+        stale.delete(event.seat);
         live.push({ seat: event.seat, pile: decoded.hand });
         if (table.screen.active_split === event.seat && split.cards.length >= 2) {
           table.screen = {
@@ -284,6 +289,8 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
         ...table.screen,
         active_split: `${event.seat}A`,
       };
+      // The pair left the base seat. Its old emptied-seat total must not come back.
+      stale.delete(event.seat);
     } else if (event.type === "card_withdrawn" && table) {
       const cards = cardsForSeat(table, event.seat);
       const card = cards.at(-1);

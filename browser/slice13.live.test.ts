@@ -6,6 +6,8 @@ import { join, normalize, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
+import { projectFeltTable } from "../src/read/felt-table.ts";
+import type { DomainEvent } from "../src/write/events.ts";
 
 /**
  * Live Pages entry for slice 13. Serves `dist/` under `/blackjack-coach/`.
@@ -78,6 +80,14 @@ function readHistory(page: Page): Promise<LiveEvent[]> {
       throw new Error("readTable missing");
     }
     return read();
+  });
+}
+
+/** `readTable` facts, without the store position, for `projectFeltTable`. */
+function recordedFacts(history: LiveEvent[]): DomainEvent[] {
+  return history.map((event) => {
+    const { position: _position, ...fact } = event;
+    return fact as DomainEvent;
   });
 }
 
@@ -658,6 +668,13 @@ test("withdraw_card_split_b_equal_rank and due_pile_header_click_b_empty_a_done"
 
     const frozen = await readHistory(page);
     const frozenInfo = await infoBar(page);
+    const frozenCounts = await rankCounts(page);
+    const frozenSuits = {
+      spades: await hoverSuit(page, "spades"),
+      clubs: await hoverSuit(page, "clubs"),
+      hearts: await hoverSuit(page, "hearts"),
+      diamonds: await hoverSuit(page, "diamonds"),
+    };
     await clickSeat(page, "2");
     await assertRing(page, "2");
     await clickSeat(page, "1");
@@ -665,6 +682,11 @@ test("withdraw_card_split_b_equal_rank and due_pile_header_click_b_empty_a_done"
     await backspace(page);
     assert.deepEqual(await readHistory(page), frozen);
     assert.deepEqual(await infoBar(page), frozenInfo);
+    assert.deepEqual(await rankCounts(page), frozenCounts);
+    assert.equal(await hoverSuit(page, "spades"), frozenSuits.spades);
+    assert.equal(await hoverSuit(page, "clubs"), frozenSuits.clubs);
+    assert.equal(await hoverSuit(page, "hearts"), frozenSuits.hearts);
+    assert.equal(await hoverSuit(page, "diamonds"), frozenSuits.diamonds);
     assert.equal(await page.locator("#hand-1B .mini").count(), 0);
     assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 21", colour: CYAN });
     assert.deepEqual(await pileTotal(page, "B"), { text: "Total: 8", colour: YELLOW });
@@ -976,6 +998,203 @@ test("rank_keys_top_row_and_numpad_every_rank", async () => {
       );
       await assertNoWithdraw(page);
     }
+  } finally {
+    await close(server, browser);
+  }
+});
+
+test("suit keys correct the last 5 and leave focus on seat 2", async () => {
+  buildDist();
+  const { server, origin } = await startServer();
+  let browser: Browser | undefined;
+  try {
+    const opened = await openLive(origin);
+    browser = opened.browser;
+    const page = opened.page;
+    await newShoe(page);
+    await clickSeat(page, "1");
+    await page.keyboard.press("5");
+    await page.locator('#hand-1 .mini[data-rank="5"][data-suit="spades"]').waitFor();
+    await assertRing(page, "2");
+    assert.equal(await ringOn(page, "1"), false);
+
+    const steps = [
+      { key: "x", suit: "hearts", symbol: "♥" },
+      { key: "d", suit: "diamonds", symbol: "♦" },
+      { key: "c", suit: "clubs", symbol: "♣" },
+      { key: "s", suit: "spades", symbol: "♠" },
+    ] as const;
+    for (const step of steps) {
+      await page.keyboard.press(step.key);
+      const card = page.locator(`#hand-1 .mini[data-rank="5"][data-suit="${step.suit}"]`);
+      await card.waitFor();
+      assert.equal(await page.locator("#hand-1 .mini").count(), 1, step.key);
+      assert.equal(await page.locator("#hand-2 .mini").count(), 0, step.key);
+      assert.equal(
+        (await page.locator("#hand-1 .suit.top-right").innerText()).trim(),
+        step.symbol,
+        step.key,
+      );
+      assert.equal(
+        (await page.locator("#hand-1 .suit.bottom-left").innerText()).trim(),
+        step.symbol,
+        step.key,
+      );
+      await assertRing(page, "2");
+      assert.equal(await ringOn(page, "1"), false, step.key);
+      const last = (await readHistory(page)).at(-1);
+      assert.equal(last?.type, "card_suit_set", step.key);
+      assert.equal(last?.suit, step.suit, step.key);
+      assert.equal(last?.seat, "1", step.key);
+    }
+  } finally {
+    await close(server, browser);
+  }
+});
+
+test("stale base total does not return after refill and split", async () => {
+  buildDist();
+  const { server, origin } = await startServer();
+  let browser: Browser | undefined;
+  try {
+    const opened = await openLive(origin);
+    browser = opened.browser;
+    const page = opened.page;
+    await newShoe(page);
+
+    await clickSeat(page, "1");
+    await clickRank(page, "8");
+    await page.locator('#hand-1 .mini[data-rank="8"][data-suit="spades"]').waitFor();
+    await clickSeat(page, "1");
+    await backspace(page);
+    await page.locator("#hand-1 .mini").waitFor({ state: "detached" });
+    assert.equal(await page.locator("#hand-1 .mini").count(), 0);
+    assert.equal((await page.locator('[data-seat="1"] .hand-total').innerText()).trim(), "Total: 8");
+    assert.equal(await totalColour(page, "1"), YELLOW);
+
+    await clickSeat(page, "1");
+    await clickRank(page, "8");
+    await page.locator('#hand-1 .mini[data-rank="8"][data-suit="spades"]').waitFor();
+    await clickSeat(page, "1");
+    await clickRank(page, "8");
+    await page.locator('#hand-1 .mini[data-suit="spades"]').nth(1).waitFor();
+    await clickSuit(page, "hearts");
+    await page.locator('#hand-1 .mini[data-suit="hearts"]').waitFor();
+    const split = page.locator("#splitBtn-1");
+    assert.equal(await split.isVisible(), true);
+    await split.click();
+    await page.locator("#hand-1A .mini").waitFor();
+    await page.locator("#hand-1B .mini").waitFor();
+
+    const felt = projectFeltTable(recordedFacts(await readHistory(page)));
+    assert.deepEqual(felt.hand_totals, [
+      { seat: "1", hand: "A", total: 8, colour: "#ffd43f", label: "Total: 8" },
+      { seat: "1", hand: "B", total: 8, colour: "#ffd43f", label: "Total: 8" },
+    ]);
+    assert.equal(await page.locator('[data-seat="1"] > .hand-total').count(), 0);
+    assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 8", colour: YELLOW });
+    assert.deepEqual(await pileTotal(page, "B"), { text: "Total: 8", colour: YELLOW });
+    assert.equal(await page.locator('#hand-1A .mini[data-rank="8"][data-suit="spades"]').count(), 1);
+    assert.equal(await page.locator('#hand-1B .mini[data-rank="8"][data-suit="hearts"]').count(), 1);
+  } finally {
+    await close(server, browser);
+  }
+});
+
+test("due_pile_header_click_emptied_a_is_live", async () => {
+  buildDist();
+  const { server, origin } = await startServer();
+  let browser: Browser | undefined;
+  try {
+    const opened = await openLive(origin);
+    browser = opened.browser;
+    const page = opened.page;
+    await newShoe(page);
+    await splitEights(page);
+
+    await clickSeat(page, "1");
+    await assertSplitFocus(page, "A");
+    await backspace(page);
+    await page.locator('#hand-1A .mini[data-rank="8"]').waitFor({ state: "detached" });
+    assert.equal(await page.locator("#hand-1A .mini").count(), 0);
+    assert.equal(await page.locator('#hand-1A .mini[data-suit="spades"]').count(), 0);
+    assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 8", colour: YELLOW });
+    assert.equal(await page.locator('#hand-1B .mini[data-rank="8"][data-suit="hearts"]').count(), 1);
+    assert.deepEqual(await pileTotal(page, "B"), { text: "Total: 8", colour: YELLOW });
+    await assertSplitFocus(page, "A");
+    const withdrawn = (await readHistory(page)).at(-1);
+    assert.equal(withdrawn?.type, "card_withdrawn");
+    assert.equal(withdrawn?.rank, "8");
+    assert.equal(withdrawn?.seat, "1A");
+
+    await clickSeat(page, "2");
+    await assertRing(page, "2");
+    assert.equal(await page.locator("#split-1 .split-hand.active").count(), 0);
+    await clickSeat(page, "1");
+    await assertSplitFocus(page, "A");
+    await clickSeat(page, "1");
+    await assertSplitFocus(page, "A");
+
+    const frozen = await readHistory(page);
+    await backspace(page);
+    assert.deepEqual(await readHistory(page), frozen);
+    assert.equal(await page.locator("#hand-1A .mini").count(), 0);
+    assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 8", colour: YELLOW });
+    assert.equal(await page.locator('#hand-1B .mini[data-rank="8"][data-suit="hearts"]').count(), 1);
+  } finally {
+    await close(server, browser);
+  }
+});
+
+test("due_pile_header_click_both_done_lands_on_b", async () => {
+  buildDist();
+  const { server, origin } = await startServer();
+  let browser: Browser | undefined;
+  try {
+    const opened = await openLive(origin);
+    browser = opened.browser;
+    const page = opened.page;
+    await newShoe(page);
+    await splitEights(page);
+
+    await page.keyboard.press("3");
+    await page.locator('#hand-1A .mini[data-rank="3"][data-suit="spades"]').waitFor();
+    await assertRing(page, "2");
+    await clickSeat(page, "1");
+    await assertSplitFocus(page, "A");
+    await page.keyboard.press("[");
+    await page.locator('#hand-1A .mini[data-rank="K"][data-suit="spades"]').waitFor();
+    assert.deepEqual(
+      await page.locator("#hand-1A .mini").evaluateAll((cards) =>
+        cards.map((card) => card.getAttribute("data-rank")),
+      ),
+      ["8", "3", "K"],
+    );
+    assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 21", colour: CYAN });
+    await assertSplitFocus(page, "A");
+
+    await clickSeat(page, "1");
+    await assertSplitFocus(page, "B");
+    await page.keyboard.press("3");
+    await page.locator('#hand-1B .mini[data-rank="3"][data-suit="spades"]').waitFor();
+    await page.keyboard.press("[");
+    await page.locator('#hand-1B .mini[data-rank="K"][data-suit="spades"]').waitFor();
+    assert.deepEqual(
+      await page.locator("#hand-1B .mini").evaluateAll((cards) =>
+        cards.map((card) => card.getAttribute("data-rank")),
+      ),
+      ["8", "3", "K"],
+    );
+    assert.equal(await page.locator('#hand-1B .mini[data-suit="hearts"]').count(), 1);
+    assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 21", colour: CYAN });
+    assert.deepEqual(await pileTotal(page, "B"), { text: "Total: 21", colour: CYAN });
+
+    await clickSeat(page, "2");
+    await assertRing(page, "2");
+    await clickSeat(page, "1");
+    await assertSplitFocus(page, "B");
+    await clickSeat(page, "1");
+    await assertSplitFocus(page, "B");
   } finally {
     await close(server, browser);
   }
