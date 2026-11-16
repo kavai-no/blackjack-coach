@@ -203,7 +203,17 @@ test("GWT felt: last registered card leaves that seat; order D,7..1; totals foll
     dealerGone.seat_piles.find((pile) => pile.seat === "D")?.cards,
     [],
   );
+  // Emptied pile keeps the total from before the withdraw (felt_withdraw).
+  // card_total 0 so the label is not a live total.
   assert.deepEqual(dealerGone.hand_totals, [
+    {
+      seat: "D",
+      total: 6,
+      colour: "#ffd43f",
+      label: "Total: 6",
+      stale: true,
+      card_total: 0,
+    },
     { seat: "1", total: 10, colour: "#ffd43f", label: "Total: 10" },
   ]);
   assert.equal(dealerGone.seat_order, "D,7,6,5,4,3,2,1");
@@ -267,14 +277,20 @@ test("GWT felt: last registered card leaves the split pile it landed in", () => 
     { seat: "1", hand: "B", cards: [] },
   ]);
   assert.equal(felt.split_piles[0]?.cards[0]?.mini_card_face.face, "K♠");
+  // B is empty, so its last total (the king, 10) stays and is marked stale.
   assert.deepEqual(felt.hand_totals, [
     { seat: "D", total: 6, colour: "#ffd43f", label: "Total: 6" },
     { seat: "1", hand: "A", total: 10, colour: "#ffd43f", label: "Total: 10" },
+    {
+      seat: "1",
+      hand: "B",
+      total: 10,
+      colour: "#ffd43f",
+      label: "Total: 10",
+      stale: true,
+      card_total: 0,
+    },
   ]);
-  assert.equal(
-    felt.hand_totals.some((hand) => hand.hand === "B"),
-    false,
-  );
   assert.equal(felt.screen.split_button_visible, false);
 });
 

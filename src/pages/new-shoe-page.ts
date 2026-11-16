@@ -10,6 +10,39 @@ import {
 
 export type Confirm = (message: string) => boolean;
 
+/**
+ * Kristoffer 2026-11-15 23:08, felt_withdraw.
+ * "Normal keyboard: 1-0=A-10, o=J, p=Q, å/[=K. Numeric pad: 1-9=A-9, 0=10, /=J, *=Q, -=K. s=spades, d=diamonds, x=hearts, c=clubs".
+ * 'a'/'A', 't'/'T' and 'Å' are not ranks. Match e.key (NumLock on), never e.code.
+ * Top-row digits and numpad digits share e.key.
+ */
+const RANK_BY_KEY: Record<string, string> = {
+  "1": "A",
+  "2": "2",
+  "3": "3",
+  "4": "4",
+  "5": "5",
+  "6": "6",
+  "7": "7",
+  "8": "8",
+  "9": "9",
+  "0": "10",
+  o: "J",
+  p: "Q",
+  "[": "K",
+  "å": "K",
+  "/": "J",
+  "*": "Q",
+  "-": "K",
+};
+
+const SUIT_BY_KEY: Record<string, string> = {
+  s: "spades",
+  d: "diamonds",
+  x: "hearts",
+  c: "clubs",
+};
+
 type ClassList = {
   add(token: string): void;
   remove(token: string): void;
@@ -117,16 +150,32 @@ export function mountNewShoePage(
       screen = "felt_split";
     });
     bindFocus(root, shell, paint);
-    bindWithdraw(root, shell, paint);
     bindChartTips(root);
     root.setAttribute("data-screen", screen);
   };
 
   document.addEventListener?.("keydown", (event) => {
-    if (event.key !== "Backspace") return;
-    event.preventDefault?.();
-    const result = shell.pressWithdraw();
-    if (!result.rejected) paint();
+    const key = event.key ?? "";
+    if (key === "Backspace") {
+      event.preventDefault?.();
+      const result = shell.pressWithdraw();
+      if (!result.rejected) paint();
+      return;
+    }
+    if (Object.hasOwn(RANK_BY_KEY, key)) {
+      const rank = RANK_BY_KEY[key];
+      if (!rank) return;
+      event.preventDefault?.();
+      playRank(shell, paint, random, rank);
+      return;
+    }
+    if (Object.hasOwn(SUIT_BY_KEY, key)) {
+      const suit = SUIT_BY_KEY[key];
+      if (!suit) return;
+      event.preventDefault?.();
+      const result = shell.pressSuit(suit);
+      if (!result.rejected) paint();
+    }
   });
 
   paint();
@@ -157,7 +206,7 @@ function readPickSuitRandom(): () => number {
   return Math.random;
 }
 
-/** Rank pad → observe-card, then set-suit from pickSuit, one gesture. */
+/** Rank pad and the 23:08 rank keys → observe-card, then set-suit from pickSuit. */
 function bindRankPad(
   root: AppRoot,
   shell: NewShoeShell,
@@ -168,14 +217,23 @@ function bindRankPad(
     button.addEventListener("click", () => {
       const rank = button.getAttribute("data-rank");
       if (!rank) return;
-      const observed = shell.pressRank(rank);
-      if (observed.rejected) return;
-      const suit = pickSuit(rank, rankSuitCells(observed.html), random);
-      shell.pressSuit(suit);
-      shell.advanceFocus();
-      paint();
+      playRank(shell, paint, random, rank);
     });
   }
+}
+
+function playRank(
+  shell: NewShoeShell,
+  paint: () => void,
+  random: () => number,
+  rank: string,
+): void {
+  const observed = shell.pressRank(rank);
+  if (observed.rejected) return;
+  const suit = pickSuit(rank, rankSuitCells(observed.html), random);
+  shell.pressSuit(suit);
+  shell.advanceFocus();
+  paint();
 }
 
 /** Rank×suit counts from the remaining view the shell just painted. */
@@ -228,14 +286,6 @@ function bindFocus(root: AppRoot, shell: NewShoeShell, paint: () => void): void 
       paint();
     });
   }
-}
-
-/** Backspace key and the shell's #backspaceBtn. Not click-delete of an older card. */
-function bindWithdraw(root: AppRoot, shell: NewShoeShell, paint: () => void): void {
-  root.querySelector("#backspaceBtn")?.addEventListener("click", () => {
-    const result = shell.pressWithdraw();
-    if (!result.rejected) paint();
-  });
 }
 
 /** Rank or suit slice hover shows the projection tooltip. No command. */

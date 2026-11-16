@@ -18,7 +18,10 @@ import {
   SHOE_DECKS,
   type CountsInfoBar,
 } from "../read/counts-info-bar.ts";
-import type { FeltTable } from "../read/felt-table.ts";
+import {
+  computeTotal,
+  type FeltTable,
+} from "../read/felt-table.ts";
 import {
   freshShoeRemaining,
   type RemainingComposition,
@@ -65,7 +68,7 @@ export type NewShoeShell = {
    * An empty manual pile posts nothing. Focus does not move.
    */
   pressWithdraw(): WithdrawPress;
-  /** Header click. Split seats walk due piles A then B. UI only. */
+  /** Header click. A split seat lands on its due pile. Stateless. UI only. */
   pressSeat(seat: string): void;
   /**
    * Ordinary-seat auto-advance after the last Observe.
@@ -101,8 +104,6 @@ export function createNewShoeShell(
   let uiFocus: string | null = null;
   /** Manual header click targets the focused pile. Observation targets the last card. */
   let provenance: "manual" | "observation" = "observation";
-  /** Next header click on a split seat: A first, then B. */
-  const dueHand = new Map<string, "A" | "B">();
   const splitBases = new Set<string>();
   /** Seat of the card the suit pad still corrects. Survives the auto-advance. */
   let openSeat = "1";
@@ -149,7 +150,6 @@ export function createNewShoeShell(
       openSeat = "1";
       uiFocus = "1";
       provenance = "observation";
-      dueHand.clear();
       lastDeal = null;
       rememberViews(felt, counts, remaining);
       page = renderNewShoe(felt, counts, remaining, uiFocus);
@@ -243,13 +243,10 @@ export function createNewShoeShell(
 
     pressSeat(seat: string) {
       if (!isPlainSeat(seat)) return;
-      if (splitBases.has(seat)) {
-        const due = dueHand.get(seat) ?? "A";
-        uiFocus = `${seat}${due}`;
-        dueHand.set(seat, due === "A" ? "B" : "A");
-      } else {
-        uiFocus = seat;
-      }
+      // Due pile is NA while NA's card total is below 21, otherwise NB.
+      // Card total, not the displayed Total label. Repeating the click
+      // does not toggle.
+      uiFocus = splitBases.has(seat) ? `${seat}${duePile(seat)}` : seat;
       provenance = "manual";
       repaint();
     },
@@ -315,13 +312,19 @@ export function createNewShoeShell(
       openSeat = "1";
       uiFocus = "1";
       provenance = "observation";
-      dueHand.clear();
       lastDeal = null;
       rememberViews(felt, counts, remaining);
       page = renderNewShoe(felt, counts, remaining, uiFocus);
       return { rejected: false, post, html: page };
     },
   };
+
+  function duePile(seat: string): "A" | "B" {
+    const cards =
+      feltNow?.split_piles.find((pile) => pile.seat === seat && pile.hand === "A")
+        ?.cards ?? [];
+    return computeTotal(cards.map((card) => card.rank)) < 21 ? "A" : "B";
+  }
 
   function withdrawTarget(): { rank: Rank; seat: string } | undefined {
     if (provenance === "manual") {
@@ -389,7 +392,7 @@ function view<T extends object>(response: HttpResponse, name: string): T {
 }
 
 function frame(body: string): string {
-  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n<button id="nextHandBtn" type="button">NEXT HAND</button>\n${renderRankPad()}\n${renderSuitPad()}\n${renderBackspace()}\n${body}`;
+  return `<button id="shuffleBtn" type="button">NEW SHOE</button>\n<button id="nextHandBtn" type="button">NEXT HAND</button>\n${renderRankPad()}\n${renderSuitPad()}\n${body}`;
 }
 
 function renderRankPad(): string {
@@ -405,11 +408,6 @@ function renderSuitPad(): string {
     return `<button type="button" class="suit-btn card-btn ${suit}" data-suit="${suit}">${SUIT_SYMBOL[suit]}</button>`;
   }).join("");
   return `<div id="suitGrid">${buttons}</div>`;
-}
-
-/** Original undo key. Not a labeled control and not click-delete of an older card. */
-function renderBackspace(): string {
-  return `<button type="button" id="backspaceBtn" data-key="Backspace">⌫</button>`;
 }
 
 function isPadRank(value: string): value is Rank {

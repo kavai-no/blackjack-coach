@@ -28,6 +28,13 @@ export type HandTotal = {
   /** bust=#ef4444; 21=rgb(0 255 245); ≥17=#22c55e; else=#ffd43f */
   colour: "#ef4444" | "rgb(0 255 245)" | "#22c55e" | "#ffd43f";
   label: string;
+  /**
+   * Set only when the pile is empty. The label is the total before the
+   * last card was withdrawn, not a live card total.
+   */
+  stale?: true;
+  /** Live card total. 0 when stale, so the label cannot be read as one. */
+  card_total?: 0;
 };
 
 export type SplitPile = {
@@ -71,7 +78,7 @@ function emptyFelt(): FeltTable {
 }
 
 /** Blackjack total. Soft ace counts as 11 until that would bust. */
-function blackjackTotal(ranks: readonly Rank[]): number {
+export function computeTotal(ranks: readonly Rank[]): number {
   let total = 0;
   let aces = 0;
   for (const rank of ranks) {
@@ -98,28 +105,61 @@ function totalColour(total: number): HandTotal["colour"] {
   return "#ffd43f";
 }
 
-function withHandTotals(table: FeltTable): FeltTable {
+type StaleMark = {
+  total: number;
+  colour: HandTotal["colour"];
+  label: string;
+};
+
+function withHandTotals(table: FeltTable, stale: ReadonlyMap<string, StaleMark>): FeltTable {
   const hand_totals: HandTotal[] = [];
   for (const pile of table.seat_piles) {
     if (pile.cards.length > 0) {
-      const total = blackjackTotal(pile.cards.map((card) => card.rank));
+      const total = computeTotal(pile.cards.map((card) => card.rank));
       hand_totals.push({
         seat: pile.seat,
         total,
         colour: totalColour(total),
         label: `Total: ${total}`,
       });
+    } else {
+      const mark = stale.get(pile.seat);
+      if (mark) {
+        hand_totals.push({
+          seat: pile.seat,
+          total: mark.total,
+          colour: mark.colour,
+          label: mark.label,
+          stale: true,
+          card_total: 0,
+        });
+      }
     }
     for (const split of table.split_piles) {
-      if (split.seat !== pile.seat || split.cards.length === 0) continue;
-      const total = blackjackTotal(split.cards.map((card) => card.rank));
-      hand_totals.push({
-        seat: split.seat,
-        hand: split.hand,
-        total,
-        colour: totalColour(total),
-        label: `Total: ${total}`,
-      });
+      if (split.seat !== pile.seat) continue;
+      if (split.cards.length > 0) {
+        const total = computeTotal(split.cards.map((card) => card.rank));
+        hand_totals.push({
+          seat: split.seat,
+          hand: split.hand,
+          total,
+          colour: totalColour(total),
+          label: `Total: ${total}`,
+        });
+      } else {
+        const mark = stale.get(`${split.seat}${split.hand}`);
+        if (mark) {
+          hand_totals.push({
+            seat: split.seat,
+            hand: split.hand,
+            total: mark.total,
+            colour: mark.colour,
+            label: mark.label,
+            stale: true,
+            card_total: 0,
+          });
+        }
+      }
     }
   }
   return {
@@ -154,19 +194,24 @@ function heroPairVisible(table: FeltTable): boolean {
  * Hand split moves that pair into split piles A (first card) and B (second).
  * Card withdrawn removes the last card of the named pile,
  * even when a later card sits on another pile.
+ * An emptied pile keeps the total it showed before that card left
+ * (`stale`, `card_total` 0). Shoe started clears those labels too.
  */
 export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
   let seenShoe = false;
   let table: FeltTable | undefined;
   const live: LiveCard[] = [];
+  const stale = new Map<string, StaleMark>();
 
   for (const event of events) {
     if (event.type === "shoe_started") {
       seenShoe = true;
       live.length = 0;
+      stale.clear();
       table = emptyFelt();
     } else if (event.type === "hand_completed" && seenShoe) {
       live.length = 0;
+      stale.clear();
       table = emptyFelt();
     } else if (event.type === "card_observed" && table) {
       const decoded = decodeCardSeat(event.seat);
@@ -249,6 +294,14 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
             : "card_withdrawn with no registered card",
         );
       }
+      if (cards.length === 1) {
+        const total = computeTotal(cards.map((item) => item.rank));
+        stale.set(event.seat, {
+          total,
+          colour: totalColour(total),
+          label: `Total: ${total}`,
+        });
+      }
       cards.pop();
       if (!takeLive(live, event.seat)) {
         throw new Error("card_withdrawn with no registered card");
@@ -259,7 +312,7 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
   if (!table) {
     throw new Error("felt table requires shoe_started");
   }
-  return withHandTotals(table);
+  return withHandTotals(table, stale);
 }
 
 type LiveCard = { seat: CardSeat; pile: "main" | "A" | "B" };
