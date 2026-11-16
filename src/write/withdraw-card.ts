@@ -13,21 +13,22 @@ export type WithdrawCardCommand = {
 
 /**
  * Withdraw card.
- * Target is the last registered card (latest Card observed still on the
- * felt). Appends `card_withdrawn` with that observe's rank and seat.
- * An older card is not a target in this slice.
+ * Target is the last card of the named pile, not the global latest observe.
+ * Ordinary seat `1`; split pile `1A` or `1B`. An older card in that pile
+ * is not a target. An empty pile is not a target.
  */
 export function withdrawCard(
   store: InMemoryEventStore,
   command: WithdrawCardCommand,
   streamId: string = TABLE_STREAM,
 ): CommandAck {
-  const last = lastRegistered(store.read(streamId));
+  const pile = pilesFrom(store.read(streamId)).get(command.seat) ?? [];
+  const last = pile.at(-1);
   if (!last) {
     throw new Error("withdraw_card requires a registered card");
   }
-  if (last.rank !== command.rank || last.seat !== command.seat) {
-    throw new Error("withdraw_card targets the last registered card");
+  if (last.rank !== command.rank) {
+    throw new Error("withdraw_card targets the last registered card of that pile");
   }
 
   const events = store.append(streamId, [
@@ -44,28 +45,46 @@ export function withdrawCard(
   return { ack: true, events, position };
 }
 
-/** Cards still on the felt. Shoe started and Hand completed clear the hand. */
-function lastRegistered(
-  history: readonly DomainEvent[],
-): { rank: Rank; seat: CardSeat } | undefined {
-  const cards: { rank: Rank; seat: CardSeat }[] = [];
+type PileCard = { rank: Rank };
+
+/** Cards still on each pile key. Shoe started and Hand completed clear the hand. */
+function pilesFrom(history: readonly DomainEvent[]): Map<string, PileCard[]> {
+  const piles = new Map<string, PileCard[]>();
+  const pile = (seat: string): PileCard[] => {
+    const found = piles.get(seat);
+    if (found) return found;
+    const created: PileCard[] = [];
+    piles.set(seat, created);
+    return created;
+  };
 
   for (const event of history) {
     if (event.type === "shoe_started" || event.type === "hand_completed") {
-      cards.length = 0;
+      piles.clear();
     } else if (event.type === "card_observed") {
-      cards.push({ rank: event.rank, seat: event.seat });
+      pile(event.seat).push({ rank: event.rank });
+    } else if (event.type === "hand_split") {
+      moveSplit(piles, event.seat);
     } else if (event.type === "card_withdrawn") {
-      const removed = cards.pop();
-      if (
-        !removed ||
-        removed.rank !== event.rank ||
-        removed.seat !== event.seat
-      ) {
-        throw new Error("card_withdrawn is not the last registered card");
+      const cards = pile(event.seat);
+      const removed = cards.at(-1);
+      if (!removed || removed.rank !== event.rank) {
+        throw new Error("card_withdrawn is not the last registered card of that pile");
       }
+      cards.pop();
     }
   }
 
-  return cards.at(-1);
+  return piles;
+}
+
+function moveSplit(piles: Map<string, PileCard[]>, seat: Seat): void {
+  const cards = piles.get(seat) ?? [];
+  const [first, second] = cards;
+  if (cards.length !== 2 || first === undefined || second === undefined) {
+    throw new Error(`hand_split on seat ${seat} lost its cards`);
+  }
+  piles.set(seat, []);
+  piles.set(`${seat}A`, [first]);
+  piles.set(`${seat}B`, [second]);
 }

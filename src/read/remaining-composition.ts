@@ -110,13 +110,11 @@ export function projectRemainingComposition(
 ): RemainingComposition {
   let composition: RemainingComposition | undefined;
   let tracked = emptyTracked();
-  let order: TrackedCard[] = [];
 
   for (const event of events) {
     if (event.type === "shoe_started") {
       composition = fullShoe(event.decks);
       tracked = emptyTracked();
-      order = [];
     } else if (event.type === "card_observed" && composition) {
       const slice = composition.remaining_by_rank.find(
         (row) => row.rank === event.rank,
@@ -131,7 +129,6 @@ export function projectRemainingComposition(
         seat: event.seat,
       };
       cardsOn(tracked, event.seat).push(card);
-      order.push(card);
     } else if (event.type === "card_suit_set" && composition) {
       const card = cardsOn(tracked, event.seat).at(-1);
       if (!card) {
@@ -139,21 +136,29 @@ export function projectRemainingComposition(
       }
       moveSuit(composition, card.rank, card.suit, event.suit);
       card.suit = event.suit;
+    } else if (event.type === "hand_split" && composition) {
+      const pile = cardsOn(tracked, event.seat);
+      const [first, second] = pile;
+      if (pile.length !== 2 || first === undefined || second === undefined) {
+        throw new Error(`hand_split on seat ${event.seat} lost its cards`);
+      }
+      const a = `${event.seat}A` as CardSeat;
+      const b = `${event.seat}B` as CardSeat;
+      first.seat = a;
+      second.seat = b;
+      tracked[a] = [first];
+      tracked[b] = [second];
+      tracked[event.seat] = [];
     } else if (event.type === "card_withdrawn" && composition) {
-      const card = order.at(-1);
+      const seatCards = cardsOn(tracked, event.seat);
+      const card = seatCards.at(-1);
       if (!card) {
         throw new Error("card_withdrawn with no registered card");
       }
-      if (card.rank !== event.rank || card.seat !== event.seat) {
-        throw new Error("card_withdrawn is not the last registered card");
+      if (card.rank !== event.rank) {
+        throw new Error("card_withdrawn is not the last registered card of that pile");
       }
-      order.pop();
-      const seatCards = cardsOn(tracked, card.seat);
-      const index = seatCards.lastIndexOf(card);
-      if (index < 0) {
-        throw new Error(`no tracked card on seat ${card.seat}`);
-      }
-      seatCards.splice(index, 1);
+      seatCards.pop();
 
       const slice = composition.remaining_by_rank.find(
         (row) => row.rank === card.rank,

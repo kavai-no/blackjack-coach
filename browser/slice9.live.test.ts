@@ -318,6 +318,8 @@ test("felt total 21: K then A, hand-total colour is rgb(0 255 245)", async () =>
     await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
     await page.locator('#cardsGrid button[data-rank="K"]').click();
     await page.locator('#hand-1 .mini[data-suit="spades"]').waitFor();
+    // Ordinary auto-advance (felt_withdraw) leaves seat 1 after the king.
+    await page.locator('[data-seat="1"] .seat-round').click();
     await page.locator('#cardsGrid button[data-rank="A"]').click();
     await page.getByText("Total: 21", { exact: true }).waitFor();
 

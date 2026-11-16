@@ -10,6 +10,39 @@ import {
 
 export type Confirm = (message: string) => boolean;
 
+/**
+ * Kristoffer 2026-11-15 23:08, felt_withdraw.
+ * "Normal keyboard: 1-0=A-10, o=J, p=Q, å/[=K. Numeric pad: 1-9=A-9, 0=10, /=J, *=Q, -=K. s=spades, d=diamonds, x=hearts, c=clubs".
+ * 'a'/'A', 't'/'T' and 'Å' are not ranks. Match e.key (NumLock on), never e.code.
+ * Top-row digits and numpad digits share e.key.
+ */
+const RANK_BY_KEY: Record<string, string> = {
+  "1": "A",
+  "2": "2",
+  "3": "3",
+  "4": "4",
+  "5": "5",
+  "6": "6",
+  "7": "7",
+  "8": "8",
+  "9": "9",
+  "0": "10",
+  o: "J",
+  p: "Q",
+  "[": "K",
+  "å": "K",
+  "/": "J",
+  "*": "Q",
+  "-": "K",
+};
+
+const SUIT_BY_KEY: Record<string, string> = {
+  s: "spades",
+  d: "diamonds",
+  x: "hearts",
+  c: "clubs",
+};
+
 type ClassList = {
   add(token: string): void;
   remove(token: string): void;
@@ -32,13 +65,19 @@ type AppRoot = {
 
 type PageDocument = {
   querySelector(selector: string): AppRoot | null;
+  addEventListener?(
+    type: string,
+    listener: (event: { key?: string; preventDefault?: () => void }) => void,
+  ): void;
 };
 
 /** Seats exist before any shoe. Hero class only. Focus ring waits for a click or NEW SHOE. */
-function idleSeatChrome(): string {
+function idleSeatChrome(focus: string | null): string {
   return IDLE_SEATS.map((seat) => {
-    const round = seat === "1" ? "seat-round your-seat" : "seat-round";
-    return `<section class="seat" data-seat="${seat}"><div class="${round}">${seat}</div><div class="hand" id="hand-${seat}"></div></section>`;
+    const classes = ["seat-round"];
+    if (seat === focus) classes.push("active");
+    if (seat === "1") classes.push("your-seat");
+    return `<section class="seat" data-seat="${seat}"><div class="${classes.join(" ")}">${seat}</div><div class="hand" id="hand-${seat}"></div></section>`;
   }).join("");
 }
 
@@ -46,7 +85,7 @@ function idleSeatChrome(): string {
  * NEW SHOE / NEXT HAND screen. `#cardsGrid` and `#suitGrid` stay mounted.
  * This page does not strip either pad.
  */
-export function presentNewShoeFragment(fragment: string): string {
+export function presentNewShoeFragment(fragment: string, focus: string | null = null): string {
   return fragment
     .replace(
       '<button id="shuffleBtn" type="button">NEW SHOE</button>\n<button id="nextHandBtn" type="button">NEXT HAND</button>',
@@ -67,7 +106,7 @@ export function presentNewShoeFragment(fragment: string): string {
     )
     .replace(
       '<div class="table" id="table"></div>',
-      `<div class="table" id="table">${idleSeatChrome()}</div>`,
+      `<div class="table" id="table">${idleSeatChrome(focus)}</div>`,
     );
 }
 
@@ -93,7 +132,7 @@ export function mountNewShoePage(
 
   let screen = "felt_idle_no_events";
   const paint = () => {
-    root.innerHTML = presentNewShoeFragment(shell.html());
+    root.innerHTML = presentNewShoeFragment(shell.html(), shell.focusKey());
     root.querySelector("#shuffleBtn")?.addEventListener("click", () => {
       const result = shell.pressNewShoe();
       if (!result.cancelled) {
@@ -110,10 +149,34 @@ export function mountNewShoePage(
     bindSplit(root, shell, paint, () => {
       screen = "felt_split";
     });
-    bindFocus(root);
+    bindFocus(root, shell, paint);
     bindChartTips(root);
     root.setAttribute("data-screen", screen);
   };
+
+  document.addEventListener?.("keydown", (event) => {
+    const key = event.key ?? "";
+    if (key === "Backspace") {
+      event.preventDefault?.();
+      const result = shell.pressWithdraw();
+      if (!result.rejected) paint();
+      return;
+    }
+    if (Object.hasOwn(RANK_BY_KEY, key)) {
+      const rank = RANK_BY_KEY[key];
+      if (!rank) return;
+      event.preventDefault?.();
+      playRank(shell, paint, random, rank);
+      return;
+    }
+    if (Object.hasOwn(SUIT_BY_KEY, key)) {
+      const suit = SUIT_BY_KEY[key];
+      if (!suit) return;
+      event.preventDefault?.();
+      const result = shell.pressSuit(suit);
+      if (!result.rejected) paint();
+    }
+  });
 
   paint();
   return store;
@@ -143,7 +206,7 @@ function readPickSuitRandom(): () => number {
   return Math.random;
 }
 
-/** Rank pad → observe-card, then set-suit from pickSuit, one gesture. */
+/** Rank pad and the 23:08 rank keys → observe-card, then set-suit from pickSuit. */
 function bindRankPad(
   root: AppRoot,
   shell: NewShoeShell,
@@ -154,13 +217,23 @@ function bindRankPad(
     button.addEventListener("click", () => {
       const rank = button.getAttribute("data-rank");
       if (!rank) return;
-      const observed = shell.pressRank(rank);
-      if (observed.rejected) return;
-      const suit = pickSuit(rank, rankSuitCells(observed.html), random);
-      shell.pressSuit(suit);
-      paint();
+      playRank(shell, paint, random, rank);
     });
   }
+}
+
+function playRank(
+  shell: NewShoeShell,
+  paint: () => void,
+  random: () => number,
+  rank: string,
+): void {
+  const observed = shell.pressRank(rank);
+  if (observed.rejected) return;
+  const suit = pickSuit(rank, rankSuitCells(observed.html), random);
+  shell.pressSuit(suit);
+  shell.advanceFocus();
+  paint();
 }
 
 /** Rank×suit counts from the remaining view the shell just painted. */
@@ -200,13 +273,17 @@ function bindSuitPad(root: AppRoot, shell: NewShoeShell, paint: () => void): voi
   }
 }
 
-/** Focus ring is UI chrome. Clicking a seat header does not append an event. */
-function bindFocus(root: AppRoot): void {
+/** Focus ring is UI chrome. A header click tells the shell the withdraw pile. */
+function bindFocus(root: AppRoot, shell: NewShoeShell, paint: () => void): void {
   const rounds = Array.from(root.querySelectorAll(".seat-round"));
-  for (const round of rounds) {
+  const seats = IDLE_SEATS;
+  for (let index = 0; index < rounds.length; index += 1) {
+    const round = rounds[index];
+    const seat = seats[index];
+    if (!round || !seat) continue;
     round.addEventListener("click", () => {
-      for (const other of rounds) other.classList.remove("active");
-      round.classList.add("active");
+      shell.pressSeat(seat);
+      paint();
     });
   }
 }

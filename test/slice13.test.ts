@@ -201,7 +201,7 @@ test("POST withdraw-card without rank and seat is 400 and does not append", () =
   assert.equal(get.status, 404);
 });
 
-test("POST withdraw-card that is not the last registered card is 400 and does not append", () => {
+test("POST withdraw-card accepts the named pile's last card and rejects anything older in that pile", () => {
   const store = createInMemoryEventStore();
   const handle = (request: HttpRequest) => handleHttp(store, request);
   start(handle);
@@ -210,7 +210,6 @@ test("POST withdraw-card that is not the last registered card is 400 and does no
   const before = store.read(TABLE_STREAM).map((event) => event.type);
 
   for (const body of [
-    { rank: "5", seat: "1" },
     { rank: "K", seat: "1" },
     { rank: "5", seat: "D" },
     { rank: "Q", seat: "D" },
@@ -227,6 +226,18 @@ test("POST withdraw-card that is not the last registered card is 400 and does no
     store.read(TABLE_STREAM).map((event) => event.type),
     before,
   );
+
+  // Locked 2026-11-07: 5 is the last card of seat 1 even though K on D is later.
+  const seatOne = ackBody(
+    handle({
+      method: "POST",
+      path: WITHDRAW_CARD_PATH,
+      body: { rank: "5", seat: "1" },
+    }),
+  );
+  assert.equal(seatOne.events[0]?.type, "card_withdrawn");
+  assert.equal(seatOne.events[0]?.rank, "5");
+  assert.equal(seatOne.events[0]?.seat, "1");
 
   const withdrawn = ackBody(
     handle({
@@ -264,8 +275,8 @@ test("POST withdraw-card that is not the last registered card is 400 and does no
 
 test("GWT Backspace withdraws the last registered card and restores counts and remaining", () => {
   const { store, calls, shell } = wired();
-  assert.match(shell.html(), /id="backspaceBtn"/);
-  assert.match(shell.html(), /data-key="Backspace"/);
+  assert.equal(shell.html().includes('id="backspaceBtn"'), false);
+  assert.equal(/⌫/.test(shell.html()), false);
   assert.equal(/withdraw/i.test(shell.html()), false);
   assert.equal(shell.pressWithdraw().rejected, true);
   assert.equal(calls.length, 0);
@@ -363,7 +374,7 @@ test("GWT Backspace withdraws the last registered card and restores counts and r
   );
   assert.match(
     html,
-    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand" id="hand-1"><\/div><\/section>/,
+    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand-total" style="color:#ffd43f">Total: 11<\/div><div class="hand" id="hand-1"><\/div><\/section>/,
   );
   for (const seat of SEATS) {
     if (seat === "1") continue;
@@ -487,6 +498,10 @@ test("withdraw-card boundary reuses withdrawCard and does not re-derive counts o
     new URL("../src/ui/new-shoe-shell.ts", import.meta.url),
     "utf8",
   );
+  const pageSrc = readFileSync(
+    new URL("../src/pages/new-shoe-page.ts", import.meta.url),
+    "utf8",
+  );
   assert.match(httpSrc, /withdrawCard\(/);
   assert.match(httpSrc, /projectFeltTable\(/);
   assert.match(httpSrc, /projectCountsInfoBar\(/);
@@ -502,7 +517,12 @@ test("withdraw-card boundary reuses withdrawCard and does not re-derive counts o
 
   assert.match(shellSrc, /WITHDRAW_CARD_PATH/);
   assert.match(shellSrc, /pressWithdraw/);
-  assert.match(shellSrc, /id="backspaceBtn"/);
+  assert.equal(shellSrc.includes('id="backspaceBtn"'), false);
+  assert.equal(shellSrc.includes("renderBackspace"), false);
+  assert.equal(pageSrc.includes('id="backspaceBtn"'), false);
+  assert.equal(pageSrc.includes("bindWithdraw"), false);
+  assert.match(pageSrc, /RANK_BY_KEY/);
+  assert.match(pageSrc, /å/);
   assert.equal(shellSrc.includes("withdrawCard"), false);
   assert.equal(shellSrc.includes("card_withdrawn"), false);
   assert.equal(shellSrc.includes("card_observed"), false);
@@ -519,3 +539,375 @@ test("withdraw-card boundary reuses withdrawCard and does not re-derive counts o
     shellSrc.slice(shellSrc.indexOf("function frame")),
   ), false);
 });
+
+test("GWT advanceFocus moves the next rank; a manual empty seat does not withdraw", () => {
+  const { store, calls, shell } = wired();
+  shell.pressNewShoe();
+  shell.pressRank("K");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "2");
+  calls.length = 0;
+
+  const five = shell.pressRank("5");
+  assert.equal(five.rejected, false);
+  assert.deepEqual(calls[0]?.body, { rank: "5", seat: "2" });
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "3");
+
+  calls.length = 0;
+  shell.pressSeat("4");
+  assert.equal(shell.focusKey(), "4");
+  assert.equal(shell.pressWithdraw().rejected, true);
+  assert.deepEqual(calls, []);
+  assert.equal(
+    store.read(TABLE_STREAM).some((event) => event.type === "card_withdrawn"),
+    false,
+  );
+  assert.equal(shell.focusKey(), "4");
+});
+
+test("GWT manual focus withdraws that pile even when another seat was registered later", () => {
+  const { store, calls, shell } = wired();
+  shell.pressNewShoe();
+  shell.pressRank("K");
+  shell.pressSuit("hearts");
+  shell.pressSeat("1");
+  shell.pressRank("5");
+  shell.pressSuit("clubs");
+  shell.advanceFocus();
+  shell.pressRank("K");
+  shell.pressSuit("spades");
+  calls.length = 0;
+
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1");
+  const pressed = shell.pressWithdraw();
+  assert.equal(pressed.rejected, false);
+  if (pressed.rejected) return;
+  assert.deepEqual(calls[0]?.body, { rank: "5", seat: "1" });
+  assert.equal(shell.focusKey(), "1");
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(
+    felt.seat_piles.find((pile) => pile.seat === "1")?.cards.map((card) => card.rank),
+    ["K"],
+  );
+  assert.deepEqual(
+    felt.seat_piles.find((pile) => pile.seat === "2")?.cards.map((card) => card.rank),
+    ["K"],
+  );
+});
+
+test("GWT seat 7's second card and the dealer's first card jump to seat 1; a third card stays", () => {
+  const { shell } = wired();
+  shell.pressNewShoe();
+  shell.pressSeat("7");
+  shell.pressRank("K");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "D");
+  shell.pressSeat("7");
+  shell.pressRank("5");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "1");
+
+  shell.pressSeat("1");
+  shell.pressRank("K");
+  shell.advanceFocus();
+  shell.pressSeat("1");
+  shell.pressRank("K");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "2");
+  shell.pressSeat("1");
+  shell.pressRank("9");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "1");
+
+  shell.pressSeat("D");
+  shell.pressRank("A");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "1");
+  shell.pressSeat("D");
+  shell.pressRank("3");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "D");
+});
+
+test("GWT split header click lands on the due pile and does not toggle", () => {
+  const { store, calls, shell } = wired();
+  shell.pressNewShoe();
+  shell.pressRank("8");
+  shell.pressSuit("spades");
+  shell.pressSeat("1");
+  shell.pressRank("8");
+  shell.pressSuit("hearts");
+  const split = shell.pressSplit();
+  assert.equal(split.rejected, false);
+  assert.equal(shell.focusKey(), "1A");
+
+  // A is 8, below 21. Repeating the header click stays on A.
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1A");
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1A");
+
+  shell.pressRank("3");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "2");
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1A");
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1A");
+  calls.length = 0;
+
+  const pressed = shell.pressWithdraw();
+  assert.equal(pressed.rejected, false);
+  if (pressed.rejected) return;
+  assert.deepEqual(calls[0]?.body, { rank: "3", seat: "1A" });
+  assert.equal(shell.focusKey(), "1A");
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(
+    felt.split_piles.find((pile) => pile.hand === "A")?.cards.map((card) => card.rank),
+    ["8"],
+  );
+  assert.deepEqual(
+    felt.split_piles.find((pile) => pile.hand === "B")?.cards.map((card) => card.rank),
+    ["8"],
+  );
+
+  // A at 21 is done, so the header lands on B. An emptied B stays due.
+  shell.pressRank("3");
+  shell.pressSeat("1");
+  shell.pressRank("K");
+  shell.advanceFocus();
+  assert.equal(shell.focusKey(), "1A");
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1B");
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1B");
+  calls.length = 0;
+  const fromB = shell.pressWithdraw();
+  assert.equal(fromB.rejected, false);
+  if (fromB.rejected) return;
+  assert.deepEqual(calls[0]?.body, { rank: "8", seat: "1B" });
+  shell.pressSeat("1");
+  assert.equal(shell.focusKey(), "1B");
+  const done = projectFeltTable(store.read(TABLE_STREAM));
+  assert.equal(
+    done.hand_totals.find((hand) => hand.hand === "A")?.total,
+    21,
+  );
+  assert.equal(
+    done.hand_totals.find((hand) => hand.hand === "B")?.stale,
+    true,
+  );
+  assert.equal(
+    done.hand_totals.find((hand) => hand.hand === "B")?.card_total,
+    0,
+  );
+
+  // An emptied A has card total 0, so it is live and due even if B still has a card.
+  const again = wired();
+  again.shell.pressNewShoe();
+  again.shell.pressRank("8");
+  again.shell.pressSuit("spades");
+  again.shell.pressSeat("1");
+  again.shell.pressRank("8");
+  again.shell.pressSuit("hearts");
+  again.shell.pressSplit();
+  again.shell.pressSeat("1");
+  assert.equal(again.shell.focusKey(), "1A");
+  const emptied = again.shell.pressWithdraw();
+  assert.equal(emptied.rejected, false);
+  again.shell.pressSeat("1");
+  assert.equal(again.shell.focusKey(), "1A");
+  again.shell.pressSeat("1");
+  assert.equal(again.shell.focusKey(), "1A");
+});
+
+test("felt_table_after_withdraw_split_b_equal_rank keeps A's 21 and B's stale 8", () => {
+  const store = createInMemoryEventStore();
+  store.append(TABLE_STREAM, [
+    { type: "shoe_started", decks: 8 },
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "hearts", seat: "1" },
+    { type: "hand_split", seat: "1" },
+    { type: "card_observed", rank: "3", seat: "1A" },
+    { type: "card_suit_set", suit: "spades", seat: "1A" },
+    { type: "card_observed", rank: "K", seat: "1A" },
+    { type: "card_suit_set", suit: "spades", seat: "1A" },
+    { type: "card_withdrawn", rank: "8", seat: "1B" },
+  ]);
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(
+    felt.seat_piles.map((pile) => pile.cards),
+    SEATS.map(() => []),
+  );
+  assert.deepEqual(felt.split_piles, [
+    {
+      seat: "1",
+      hand: "A",
+      cards: [piledCard("8", "spades"), piledCard("3", "spades"), piledCard("K", "spades")],
+    },
+    { seat: "1", hand: "B", cards: [] },
+  ]);
+  // HCL colour cyan is rgb(0 255 245); yellow is #ffd43f.
+  assert.deepEqual(felt.hand_totals, [
+    { seat: "1", hand: "A", total: 21, colour: "rgb(0 255 245)", label: "Total: 21" },
+    {
+      seat: "1",
+      hand: "B",
+      total: 8,
+      colour: "#ffd43f",
+      label: "Total: 8",
+      stale: true,
+      card_total: 0,
+    },
+  ]);
+
+  const counts = projectCountsInfoBar(store.read(TABLE_STREAM));
+  assert.equal(counts.penetration, "P: 0.72%");
+  assert.equal(counts.decks_left, "D: 7.94");
+  assert.equal(`${counts.ra.label} ${counts.ra.value}`, "RA: -0.87");
+  assert.equal(counts.hilo_display, "Hi-Lo: 0 / 0.00");
+  assert.equal(counts.apc_tc, "APC: 0.00");
+  assert.equal(counts.zen_tc, "Zen: -0.13");
+  assert.equal(counts.omega_ii_tc, "Omega II: -0.13");
+  assert.equal(counts.ace_tc, "Ace: 0.03");
+
+  const remaining = projectRemainingComposition(store.read(TABLE_STREAM));
+  for (const rank of ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const) {
+    const count = remaining.remaining_by_rank.find((slice) => slice.rank === rank)?.count;
+    const expected = rank === "3" || rank === "8" || rank === "K" ? 31 : 32;
+    assert.equal(count, expected, rank);
+  }
+  assert.equal(
+    remaining.remaining_by_suit.find((slice) => slice.suit === "spades")?.count,
+    101,
+  );
+  assert.equal(
+    remaining.remaining_by_suit.find((slice) => slice.suit === "clubs")?.count,
+    104,
+  );
+  assert.equal(
+    remaining.remaining_by_suit.find((slice) => slice.suit === "hearts")?.count,
+    104,
+  );
+  assert.equal(
+    remaining.remaining_by_suit.find((slice) => slice.suit === "diamonds")?.count,
+    104,
+  );
+});
+
+test("felt_table_new_shoe_clears_stale_totals", () => {
+  const store = createInMemoryEventStore();
+  store.append(TABLE_STREAM, [
+    { type: "shoe_started", decks: 8 },
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+    { type: "card_observed", rank: "5", seat: "2" },
+    { type: "card_suit_set", suit: "spades", seat: "2" },
+    { type: "card_withdrawn", rank: "8", seat: "1" },
+  ]);
+  const mid = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(mid.seat_piles.find((pile) => pile.seat === "1")?.cards, []);
+  assert.deepEqual(mid.seat_piles.find((pile) => pile.seat === "2")?.cards, [
+    piledCard("5", "spades"),
+  ]);
+  assert.deepEqual(
+    mid.hand_totals.find((hand) => hand.seat === "1"),
+    {
+      seat: "1",
+      total: 8,
+      colour: "#ffd43f",
+      label: "Total: 8",
+      stale: true,
+      card_total: 0,
+    },
+  );
+  assert.deepEqual(
+    mid.hand_totals.find((hand) => hand.seat === "2"),
+    { seat: "2", total: 5, colour: "#ffd43f", label: "Total: 5" },
+  );
+
+  store.append(TABLE_STREAM, [{ type: "shoe_started", decks: 8 }]);
+  const events = store.read(TABLE_STREAM);
+  assert.equal(
+    events.some((event) => event.type === "hand_completed"),
+    false,
+  );
+  const felt = projectFeltTable(events);
+  assert.deepEqual(
+    felt.seat_piles.map((pile) => pile.cards),
+    SEATS.map(() => []),
+  );
+  assert.deepEqual(felt.split_piles, []);
+  assert.deepEqual(felt.hand_totals, []);
+});
+
+test("GWT card_observed drops a stale seat total", () => {
+  const store = createInMemoryEventStore();
+  store.append(TABLE_STREAM, [
+    { type: "shoe_started", decks: 8 },
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+    { type: "card_withdrawn", rank: "8", seat: "1" },
+  ]);
+  const emptied = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(emptied.hand_totals, [
+    {
+      seat: "1",
+      total: 8,
+      colour: "#ffd43f",
+      label: "Total: 8",
+      stale: true,
+      card_total: 0,
+    },
+  ]);
+
+  store.append(TABLE_STREAM, [
+    { type: "card_observed", rank: "K", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+  ]);
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(felt.seat_piles.find((pile) => pile.seat === "1")?.cards, [
+    piledCard("K", "spades"),
+  ]);
+  assert.deepEqual(felt.hand_totals, [
+    { seat: "1", total: 10, colour: "#ffd43f", label: "Total: 10" },
+  ]);
+  assert.equal(felt.hand_totals.some((hand) => hand.stale), false);
+});
+
+test("GWT hand_split drops a stale base-seat total", () => {
+  const store = createInMemoryEventStore();
+  store.append(TABLE_STREAM, [
+    { type: "shoe_started", decks: 8 },
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+    { type: "card_withdrawn", rank: "8", seat: "1" },
+  ]);
+  assert.equal(projectFeltTable(store.read(TABLE_STREAM)).hand_totals[0]?.stale, true);
+
+  store.append(TABLE_STREAM, [
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "spades", seat: "1" },
+    { type: "card_observed", rank: "8", seat: "1" },
+    { type: "card_suit_set", suit: "hearts", seat: "1" },
+    { type: "hand_split", seat: "1" },
+  ]);
+  const felt = projectFeltTable(store.read(TABLE_STREAM));
+  assert.deepEqual(felt.split_piles, [
+    { seat: "1", hand: "A", cards: [piledCard("8", "spades")] },
+    { seat: "1", hand: "B", cards: [piledCard("8", "hearts")] },
+  ]);
+  assert.deepEqual(felt.hand_totals, [
+    { seat: "1", hand: "A", total: 8, colour: "#ffd43f", label: "Total: 8" },
+    { seat: "1", hand: "B", total: 8, colour: "#ffd43f", label: "Total: 8" },
+  ]);
+  assert.equal(
+    felt.hand_totals.some((hand) => hand.hand === undefined || hand.stale),
+    false,
+  );
+});
+
