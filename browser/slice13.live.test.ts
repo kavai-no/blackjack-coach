@@ -308,7 +308,7 @@ async function assertSplitFocus(page: Page, hand: "A" | "B"): Promise<void> {
 }
 
 async function splitEights(page: Page): Promise<void> {
-  await page.locator('[data-seat="1"] .seat-round').dblclick();
+  // No hero step: split needs no hero (split_on_every_player_seat, 03).
   assert.equal(
     await page.locator('[data-seat="1"] .seat-round').evaluate((element) => {
       return getComputedStyle(element).backgroundColor;

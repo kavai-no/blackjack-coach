@@ -639,7 +639,7 @@ test("GWT split header click lands on the due pile and does not toggle", () => {
   shell.pressSeat("1");
   shell.pressRank("8");
   shell.pressSuit("hearts");
-  const split = shell.pressSplit();
+  const split = shell.pressSplit("1");
   assert.equal(split.rejected, false);
   assert.equal(shell.focusKey(), "1A");
 
@@ -712,7 +712,7 @@ test("GWT split header click lands on the due pile and does not toggle", () => {
   again.shell.pressSeat("1");
   again.shell.pressRank("8");
   again.shell.pressSuit("hearts");
-  again.shell.pressSplit();
+  again.shell.pressSplit("1");
   again.shell.pressSeat("1");
   assert.equal(again.shell.focusKey(), "1A");
   const emptied = again.shell.pressWithdraw();

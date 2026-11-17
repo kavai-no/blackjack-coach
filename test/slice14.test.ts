@@ -207,7 +207,7 @@ test("POST /commands/complete-hand has no body and returns ack, events, position
   assert.deepEqual(projected.hand_totals, []);
   assert.equal(projected.screen.focus_seat, "1");
   assert.equal(projected.screen.hero_seat, "1");
-  assert.equal(projected.screen.split_button_visible, false);
+  assert.deepEqual(projected.screen.split_ready_seats, []);
   assert.equal(projected.screen.next_hand, "complete_hand");
 
   const again = ackBody(handle({ method: "POST", path: COMPLETE_HAND_PATH }));
@@ -287,7 +287,7 @@ test("GWT NEXT HAND clears split piles and keeps the shoe; a second press still 
   shell.pressSuit("spades");
   shell.pressRank("K");
   shell.pressSuit("diamonds");
-  const split = shell.pressSplit();
+  const split = shell.pressSplit("1");
   assert.equal(split.rejected, false);
   observe(handle, "6", "D");
   suit(handle, "hearts", "D");
@@ -420,7 +420,7 @@ test("GWT NEXT HAND clears split piles and keeps the shoe; a second press still 
   calls.length = 0;
   assert.equal(shell.pressWithdraw().rejected, true);
   assert.equal(shell.pressSuit("hearts").rejected, true);
-  assert.equal(shell.pressSplit().rejected, true);
+  assert.equal(shell.pressSplit("1").rejected, true);
   assert.equal(calls.length, 0);
 
   calls.length = 0;

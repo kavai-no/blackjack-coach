@@ -1,5 +1,6 @@
 import type { Rank, Suit } from "../counting/maps.ts";
 import { piledCard } from "../felt/piled-card.ts";
+import { sameSplitValue } from "../felt/split-value.ts";
 import type { MiniCardFace } from "../felt/mini-card-face.ts";
 import { SEATS, type CardSeat, type DomainEvent, type Seat } from "../write/events.ts";
 
@@ -52,7 +53,11 @@ export type FeltTable = {
   screen: {
     focus_seat: FeltSeat;
     hero_seat: "1";
-    split_button_visible: boolean;
+    /**
+     * Player seats whose SPLIT shows, in felt order. Any player seat 1-7,
+     * never the dealer (split_on_every_player_seat, dealer_cannot_split).
+     */
+    split_ready_seats: FeltSeat[];
     /** Original `activeSplit`. Pile A of the seat that split. Null when none is live. */
     active_split: `${FeltSeat}A` | null;
     new_shoe: "start_shoe";
@@ -69,7 +74,7 @@ function emptyFelt(): FeltTable {
     screen: {
       focus_seat: "1",
       hero_seat: "1",
-      split_button_visible: false,
+      split_ready_seats: [],
       active_split: null,
       new_shoe: "start_shoe",
       next_hand: "complete_hand",
@@ -167,23 +172,30 @@ function withHandTotals(table: FeltTable, stale: ReadonlyMap<string, StaleMark>)
     hand_totals,
     screen: {
       ...table.screen,
-      split_button_visible: heroPairVisible(table),
+      split_ready_seats: splitReadySeats(table),
     },
   };
 }
 
-/** Split button: hero seat, exactly two cards, identical rank, not already split. */
-function heroPairVisible(table: FeltTable): boolean {
-  const hero = table.screen.hero_seat;
-  if (table.split_piles.some((pile) => pile.seat === hero)) return false;
-  const pile = table.seat_piles.find((seat) => seat.seat === hero);
-  const [first, second] = pile?.cards ?? [];
-  return (
-    pile?.cards.length === 2 &&
-    first !== undefined &&
-    second !== undefined &&
-    first.rank === second.rank
-  );
+/**
+ * SPLIT shows on a player seat whose unsplit pile holds exactly two cards of
+ * the same point value (split_same_point_value, split_first_two_cards_only).
+ * Never the dealer; never a split pile (those are not seat piles).
+ */
+function splitReadySeats(table: FeltTable): FeltSeat[] {
+  return table.seat_piles
+    .filter((pile) => pile.seat !== "D")
+    .filter((pile) => !table.split_piles.some((split) => split.seat === pile.seat))
+    .filter((pile) => {
+      const [first, second] = pile.cards;
+      return (
+        pile.cards.length === 2 &&
+        first !== undefined &&
+        second !== undefined &&
+        sameSplitValue(first.rank, second.rank)
+      );
+    })
+    .map((pile) => pile.seat);
 }
 
 /**
@@ -266,7 +278,7 @@ export function projectFeltTable(events: readonly DomainEvent[]): FeltTable {
         pile.cards.length !== 2 ||
         first === undefined ||
         second === undefined ||
-        first.rank !== second.rank
+        !sameSplitValue(first.rank, second.rank)
       ) {
         throw new Error(`hand_split on seat ${event.seat} is not a pair`);
       }
