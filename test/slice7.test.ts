@@ -101,7 +101,7 @@ test("GWT felt_table_empty_after_hand_completed: piles and totals gone, order st
   assert.deepEqual(felt.hand_totals, []);
   assert.equal(felt.screen.focus_seat, "1");
   assert.equal(felt.screen.hero_seat, "1");
-  assert.equal(felt.screen.split_button_visible, false);
+  assert.deepEqual(felt.screen.split_ready_seats, []);
   assert.equal(felt.screen.new_shoe, "start_shoe");
   assert.equal(felt.screen.next_hand, "complete_hand");
 
@@ -209,7 +209,7 @@ test("GWT a completed hand has nothing left to withdraw or split", () => {
     () => withdrawCard(store, { rank: "K", seat: "1" }),
     /requires a registered card/,
   );
-  assert.throws(() => splitHand(store, { seat: "1" }), /same rank/);
+  assert.throws(() => splitHand(store, { seat: "1" }), /first two cards/);
   assert.deepEqual(
     store.read(TABLE_STREAM).map((event) => event.type),
     before,

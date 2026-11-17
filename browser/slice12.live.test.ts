@@ -188,21 +188,20 @@ async function clickSeat(page: Page, seat: string): Promise<void> {
   await page.locator(`[data-seat="${seat}"] .seat-round`).click();
 }
 
-/** Hero ring is `.your-seat`. Double-click also lands the focus ring via click. */
-async function assertHeroSelected(page: Page): Promise<void> {
+/**
+ * Focus ring on seat 1. No hero step: split needs no hero
+ * (split_on_every_player_seat, 03; mentor B2 closed 2026-11-17).
+ */
+async function assertFocusOnSeat1(page: Page): Promise<void> {
   const seat = page.locator('[data-seat="1"] .seat-round');
-  assert.equal(await seat.evaluate((element) => element.classList.contains("your-seat")), true);
   assert.equal(await seat.evaluate((element) => element.classList.contains("active")), true);
-  const shadow = await seat.evaluate((element) => getComputedStyle(element).boxShadow);
-  assert.match(shadow, /rgba?\(34,\s*197,\s*94/);
-  assert.match(shadow, /rgb\(0,\s*255,\s*136\)/);
-  assert.equal(await page.locator(".seat-round.your-seat").count(), 1);
+  assert.equal(await page.locator(".seat-round.active").count(), 1);
 }
 
 test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", async () => {
   buildDist();
   const builtJs = readFileSync(join(dist, "boot.js"), "utf8");
-  assert.equal(builtJs.includes("#splitBtn-1"), true);
+  assert.equal(builtJs.includes("split-btn"), true);
   assert.equal(builtJs.includes("/commands/split-hand"), true);
   assert.equal(builtJs.includes("es3"), false);
 
@@ -213,14 +212,12 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     browser = opened.browser;
     const page = opened.page;
 
-    await page.locator('[data-seat="1"] .seat-round').dblclick();
-    await assertHeroSelected(page);
     assert.deepEqual(await readHistory(page), []);
     assert.equal(await page.locator("#splitBtn-1").count(), 0);
 
     await page.getByRole("button", { name: "NEW SHOE" }).click();
     await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
-    await assertHeroSelected(page);
+    await assertFocusOnSeat1(page);
     assert.deepEqual((await readHistory(page)).map((event) => event.type), ["shoe_started"]);
 
     await clickSeat(page, "1");
@@ -374,7 +371,7 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     assert.equal(await hoverSuit(page, "clubs"), "♣: 104");
     assert.equal(await hoverSuit(page, "hearts"), "♥: 103");
     assert.equal(await hoverSuit(page, "diamonds"), "♦: 104");
-    await assertHeroSelected(page);
+    await assertFocusOnSeat1(page);
 
     await page.locator('#cardsGrid button[data-rank="5"]').click();
     await page.locator('#hand-1A .mini[data-rank="5"][data-suit="spades"]').waitFor();
@@ -521,7 +518,7 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     assert.equal(await page.locator(".mini").count(), 0);
     assert.equal(await page.locator("#splitBtn-1").count(), 0);
     assert.equal(await page.getByRole("button", { name: "SPLIT" }).count(), 0);
-    await assertHeroSelected(page);
+    await assertFocusOnSeat1(page);
     assert.equal(await page.locator(".seat-round.active").count(), 1);
     assert.equal(
       await page.locator('[data-seat="2"] .seat-round').evaluate((element) =>
@@ -558,7 +555,7 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
   }
 });
 
-test("felt_split: SPLIT stays hidden for 10+K", async () => {
+test("felt_split v2: SPLIT shows for 10+K (split_same_point_value)", async () => {
   buildDist();
   const { server, origin } = await startServer();
   let browser: Browser | undefined;
@@ -567,8 +564,6 @@ test("felt_split: SPLIT stays hidden for 10+K", async () => {
     browser = opened.browser;
     const page = opened.page;
 
-    await page.locator('[data-seat="1"] .seat-round').dblclick();
-    await assertHeroSelected(page);
     await page.getByRole("button", { name: "NEW SHOE" }).click();
     await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
 
@@ -592,18 +587,23 @@ test("felt_split: SPLIT stays hidden for 10+K", async () => {
     assert.equal(await cards.count(), 2);
     assert.equal(await cards.nth(0).getAttribute("data-rank"), "10");
     assert.equal(await cards.nth(1).getAttribute("data-rank"), "K");
-    assert.equal(await page.locator("#splitBtn-1").count(), 0);
-    assert.equal(await page.locator(".split-btn").count(), 0);
-    assert.equal(await page.getByRole("button", { name: "SPLIT" }).count(), 0);
-    assert.equal(await page.locator("#split-1").count(), 0);
-    assert.equal(
-      (await readHistory(page)).some((event) => event.type === "hand_split"),
-      false,
-    );
+    // 10 and K share point value 10: SPLIT is visible and enabled.
+    const split = page.locator("#splitBtn-1");
+    assert.equal(await split.isVisible(), true);
+    assert.equal(await split.isEnabled(), true);
+    assert.equal(await page.locator(".split-btn").count(), 1);
     assert.deepEqual(
       (await readHistory(page)).map((event) => event.type),
       ["shoe_started", "card_observed", "card_suit_set", "card_observed", "card_suit_set"],
     );
+    await split.click();
+    await page.locator('#hand-1A .mini[data-rank="10"]').waitFor();
+    await page.locator('#hand-1B .mini[data-rank="K"]').waitFor();
+    assert.equal((await page.locator("#hand-1A .hand-total").innerText()).trim(), "Total: 10");
+    assert.equal((await page.locator("#hand-1B .hand-total").innerText()).trim(), "Total: 10");
+    const history = await readHistory(page);
+    assert.equal(history.at(-1)?.type, "hand_split");
+    assert.equal(history.at(-1)?.seat, "1");
   } finally {
     await close(server, browser);
   }

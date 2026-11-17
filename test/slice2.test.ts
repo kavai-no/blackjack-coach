@@ -124,7 +124,7 @@ test("GWT empty shoe: Felt table piles empty, seat order D,7..1, focus seat 1", 
   assert.deepEqual(felt.hand_totals, []);
   assert.equal(felt.screen.focus_seat, "1");
   assert.equal(felt.screen.hero_seat, "1");
-  assert.equal(felt.screen.split_button_visible, false);
+  assert.deepEqual(felt.screen.split_ready_seats, []);
   assert.equal(felt.screen.new_shoe, "start_shoe");
   assert.equal(felt.screen.next_hand, "complete_hand");
   assert.equal("disabled_seats" in felt, false);
