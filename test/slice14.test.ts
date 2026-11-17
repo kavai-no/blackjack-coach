@@ -474,8 +474,10 @@ test("mounted page keeps #nextHandBtn in the topbar and clicks it only through t
   const cleared = document.querySelector("#app")?.innerHTML ?? "";
   assert.match(
     cleared,
-    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div style="display:flex" class="hand" id="hand-1"><\/div><\/section>/,
+    /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand" id="hand-1"><\/div><\/section>/,
   );
+  // Layout is the stylesheet's (.hand flex column, original styles.css:38), not a post-paint patch.
+  assert.equal(/class="hand"[^>]*style=|style="[^"]*"\s+class="hand"/.test(cleared), false);
   assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|SURRENDER|Expert/i.test(cleared), false);
 
   const page = readFileSync(new URL("../src/pages/new-shoe-page.ts", import.meta.url), "utf8");

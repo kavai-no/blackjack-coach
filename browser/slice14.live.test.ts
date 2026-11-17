@@ -203,6 +203,15 @@ async function assertHeroSelected(page: Page): Promise<void> {
   assert.equal(await page.locator(".seat-round.your-seat").count(), 1);
 }
 
+/** Original styles.css:38: every `.hand` is a flex column on every screen. */
+async function assertHandLayout(hand: Locator): Promise<void> {
+  const layout = await hand.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return [style.display, style.flexDirection];
+  });
+  assert.deepEqual(layout, ["flex", "column"]);
+}
+
 async function rankCounts(page: Page): Promise<Record<string, string>> {
   const counts: Record<string, string> = {};
   for (const rank of RANKS) {
@@ -393,11 +402,7 @@ test("felt_next_hand: NEXT HAND clears split A/B and keeps the shoe", async () =
       assert.equal(await hand.count(), 1);
       assert.equal(await hand.isVisible(), true);
       assert.equal((await hand.innerText()).trim(), "");
-      assert.equal(await hand.evaluate((element) => getComputedStyle(element).display), "flex");
-      assert.equal(
-        await hand.evaluate((element) => (element as HTMLElement).style.display),
-        "flex",
-      );
+      await assertHandLayout(hand);
     }
     await assertHeroSelected(page);
     assert.equal(await page.locator(".seat-round.active").count(), 1);
@@ -427,12 +432,47 @@ test("felt_next_hand: NEXT HAND clears split A/B and keeps the shoe", async () =
       const hand = page.locator(`#hand-${seat}`);
       assert.equal(await hand.isVisible(), true);
       assert.equal((await hand.innerText()).trim(), "");
-      assert.equal(await hand.evaluate((element) => getComputedStyle(element).display), "flex");
+      await assertHandLayout(hand);
     }
     await assertHeroSelected(page);
     assert.deepEqual(await infoBar(page), capturedInfo);
     assert.deepEqual(await rankCounts(page), capturedRanks);
     assert.deepEqual(await suitTips(page), capturedSuits);
+
+    // Repaint after NEXT HAND: the next cards re-render the felt. The original
+    // layout (styles.css:38 flex column, cards centred and stacked) holds.
+    await clickSeat(page, "1");
+    await page.locator('#cardsGrid button[data-rank="5"]').click();
+    await page.locator("#hand-1 .mini").first().waitFor();
+    await clickSeat(page, "1");
+    await page.locator('#cardsGrid button[data-rank="9"]').click();
+    await page.locator("#hand-1 .mini").nth(1).waitFor();
+    const repainted = await readHistory(page);
+    assert.deepEqual(
+      repainted
+        .slice(twice.length)
+        .filter((event) => event.type === "card_observed")
+        .map((event) => [event.type, event.seat, event.rank]),
+      [
+        ["card_observed", "1", "5"],
+        ["card_observed", "1", "9"],
+      ],
+    );
+    assert.equal(await page.locator("#hand-1 .mini").count(), 2);
+    for (const seat of SEATS) {
+      await assertHandLayout(page.locator(`#hand-${seat}`));
+    }
+    const handBox = await page.locator("#hand-1").boundingBox();
+    const firstBox = await page.locator("#hand-1 .mini").nth(0).boundingBox();
+    const secondBox = await page.locator("#hand-1 .mini").nth(1).boundingBox();
+    assert.ok(handBox && firstBox && secondBox);
+    // Centred in the seat column, like `margin: 0 auto` in a flex column.
+    assert.ok(
+      Math.abs(firstBox.x + firstBox.width / 2 - (handBox.x + handBox.width / 2)) <= 1,
+    );
+    // Stacked top to bottom with the -25px overlap, not laid out side by side.
+    assert.equal(secondBox.x, firstBox.x);
+    assert.equal(Math.round(secondBox.y - firstBox.y), Math.round(firstBox.height - 25));
   } finally {
     await close(server, browser);
   }

@@ -84,7 +84,15 @@ body {
   color: #fff;
   box-shadow: 0 0 0 4px #00ff88, 0 0 20px #22c55e88;
 }
-.hand { min-height: 12px; width: 100%; padding-bottom: 25px; }
+/* Layout parity: original styles.css:38 lays every .hand out as a flex
+   column on every screen. Owned here, not patched after NEXT HAND. */
+.hand {
+  display: flex;
+  flex-direction: column;
+  min-height: 12px;
+  width: 100%;
+  padding-bottom: 25px;
+}
 .mini {
   width: 35px;
   height: 46px;
