@@ -20,10 +20,15 @@ import { projectFeltTable } from "../src/read/felt-table.ts";
 import { projectRemainingComposition } from "../src/read/remaining-composition.ts";
 import { mountNewShoePage } from "../src/pages/new-shoe-page.ts";
 import { createNewShoeShell } from "../src/ui/new-shoe-shell.ts";
+import { completeHand } from "../src/write/complete-hand.ts";
 import {
   TABLE_STREAM,
   createInMemoryEventStore,
 } from "../src/write/in-memory-store.ts";
+import { observeCard } from "../src/write/observe-card.ts";
+import { setSuit } from "../src/write/set-suit.ts";
+import { splitHand } from "../src/write/split-hand.ts";
+import { startShoe } from "../src/write/start-shoe.ts";
 
 const SEATS = ["D", "7", "6", "5", "4", "3", "2", "1"];
 
@@ -267,7 +272,7 @@ test("POST complete-hand ignores a body, still appends on an empty live shoe, an
   assert.deepEqual(get.body, { error: "not_found" });
 });
 
-test("GWT NEXT HAND clears split piles and keeps the shoe; a second press still posts", () => {
+test("GWT complete_hand_happy: K♠ → K♥, K♠ split on seat 1; NEXT HAND clears split piles and keeps the shoe; a second press still posts", () => {
   const { store, calls, handle, shell } = wired();
   assert.match(shell.html(), /id="nextHandBtn"/);
   assert.match(shell.html(), />NEXT HAND</);
@@ -283,23 +288,38 @@ test("GWT NEXT HAND clears split piles and keeps the shoe; a second press still 
   assert.equal(ackBody(empty.post).events[0]?.type, "hand_completed");
   calls.length = 0;
 
+  // Exact Given of complete_hand_happy (03): K♠ corrected to K♥, then K♠, split seat 1.
   shell.pressRank("K");
   shell.pressSuit("spades");
+  shell.pressSuit("hearts");
   shell.pressRank("K");
-  shell.pressSuit("diamonds");
+  shell.pressSuit("spades");
   const split = shell.pressSplit();
   assert.equal(split.rejected, false);
-  observe(handle, "6", "D");
-  suit(handle, "hearts", "D");
   const dealt = store.read(TABLE_STREAM);
+  assert.deepEqual(
+    dealt.slice(-6).map(({ position: _position, ...fact }) => fact),
+    [
+      { type: "card_observed", rank: "K", seat: "1" },
+      { type: "card_suit_set", suit: "spades", seat: "1" },
+      { type: "card_suit_set", suit: "hearts", seat: "1" },
+      { type: "card_observed", rank: "K", seat: "1" },
+      { type: "card_suit_set", suit: "spades", seat: "1" },
+      { type: "hand_split", seat: "1" },
+    ],
+  );
   const countsBefore = projectCountsInfoBar(dealt);
   const remainingBefore = projectRemainingComposition(dealt);
   const feltBefore = projectFeltTable(dealt);
-  assert.equal(feltBefore.split_piles.length, 2);
-  assert.equal(
-    feltBefore.seat_piles.find((pile) => pile.seat === "D")?.cards.length,
-    1,
+  assert.deepEqual(
+    feltBefore.split_piles.map((pile) => [pile.seat, pile.hand, pile.cards.map((card) => `${card.rank}${card.suit}`)]),
+    [
+      ["1", "A", ["Khearts"]],
+      ["1", "B", ["Kspades"]],
+    ],
   );
+  assert.equal(countsBefore.penetration, "P: 0.48%");
+  assert.equal(countsBefore.hilo_display, "Hi-Lo: -2 / -0.25");
   assert.match(shell.html(), /id="split-1"/);
   calls.length = 0;
 
@@ -476,6 +496,8 @@ test("mounted page keeps #nextHandBtn in the topbar and clicks it only through t
     cleared,
     /<section class="seat" data-seat="1"><div class="seat-round active your-seat">1<\/div><div class="hand" id="hand-1"><\/div><\/section>/,
   );
+  // Layout is the stylesheet's (.hand flex column, original styles.css:38), not a post-paint patch.
+  assert.equal(/class="hand"[^>]*style=|style="[^"]*"\s+class="hand"/.test(cleared), false);
   assert.equal(/RoR|Wong|21\+3|Perfect Pair|sidebet|SURRENDER|Expert/i.test(cleared), false);
 
   const page = readFileSync(new URL("../src/pages/new-shoe-page.ts", import.meta.url), "utf8");
@@ -519,4 +541,172 @@ test("complete-hand boundary reuses completeHand and does not clear piles or cou
   assert.equal(shellSrc.includes("settleHand"), false);
   assert.equal(shellSrc.includes("node:http"), false);
   assert.equal(shellSrc.includes("createServer"), false);
+});
+
+function remainingRank(
+  remaining: ReturnType<typeof projectRemainingComposition>,
+  rank: string,
+): number | undefined {
+  return remaining.remaining_by_rank.find((slice) => slice.rank === rank)?.count;
+}
+
+function remainingSuit(
+  remaining: ReturnType<typeof projectRemainingComposition>,
+  suitName: string,
+): number | undefined {
+  return remaining.remaining_by_suit.find((slice) => slice.suit === suitName)?.count;
+}
+
+test("GWT remaining per-seat cards clear on hand_completed: split seat 1 after NEXT HAND", () => {
+  const store = createInMemoryEventStore();
+  startShoe(store, { decks: 8 });
+  observeCard(store, { rank: "5", seat: "1" });
+  setSuit(store, { suit: "hearts", seat: "1" });
+  completeHand(store);
+
+  observeCard(store, { rank: "K", seat: "1" });
+  setSuit(store, { suit: "hearts", seat: "1" });
+  observeCard(store, { rank: "K", seat: "1" });
+  setSuit(store, { suit: "spades", seat: "1" });
+  splitHand(store, { seat: "1" });
+
+  const history = store.read(TABLE_STREAM);
+  assert.equal(history.at(-1)?.type, "hand_split");
+  const remaining = projectRemainingComposition(history);
+  assert.equal(remainingRank(remaining, "5"), 31);
+  assert.equal(remainingRank(remaining, "K"), 30);
+  assert.equal(remainingSuit(remaining, "hearts"), 102);
+  assert.equal(remainingSuit(remaining, "spades"), 103);
+  assert.equal(remainingSuit(remaining, "clubs"), 104);
+  assert.equal(remainingSuit(remaining, "diamonds"), 104);
+
+  const felt = projectFeltTable(history);
+  assert.equal(felt.seat_piles.find((pile) => pile.seat === "1")?.cards.length, 0);
+});
+
+test("GWT remaining per-seat cards clear on NEW SHOE mid-shoe: split seat 1 in the fresh shoe", () => {
+  const store = createInMemoryEventStore();
+  startShoe(store, { decks: 8 });
+  observeCard(store, { rank: "5", seat: "1" });
+  setSuit(store, { suit: "hearts", seat: "1" });
+  startShoe(store, { decks: 8 });
+  assert.deepEqual(
+    store.read(TABLE_STREAM).slice(-2).map((event) => event.type),
+    ["hand_completed", "shoe_started"],
+  );
+
+  observeCard(store, { rank: "K", seat: "1" });
+  setSuit(store, { suit: "hearts", seat: "1" });
+  observeCard(store, { rank: "K", seat: "1" });
+  setSuit(store, { suit: "spades", seat: "1" });
+  splitHand(store, { seat: "1" });
+
+  const remaining = projectRemainingComposition(store.read(TABLE_STREAM));
+  assert.equal(remainingRank(remaining, "5"), 32);
+  assert.equal(remainingRank(remaining, "K"), 30);
+  assert.equal(remainingSuit(remaining, "hearts"), 103);
+  assert.equal(remainingSuit(remaining, "spades"), 103);
+});
+
+test("GWT remaining counts persist across hand_completed while per-seat cards clear", () => {
+  const store = createInMemoryEventStore();
+  startShoe(store, { decks: 8 });
+  observeCard(store, { rank: "K", seat: "1" });
+  setSuit(store, { suit: "hearts", seat: "1" });
+  observeCard(store, { rank: "7", seat: "1" });
+  setSuit(store, { suit: "clubs", seat: "1" });
+  observeCard(store, { rank: "A", seat: "D" });
+  const before = projectRemainingComposition(store.read(TABLE_STREAM));
+  assert.equal(remainingRank(before, "K"), 31);
+  assert.equal(remainingRank(before, "7"), 31);
+  assert.equal(remainingRank(before, "A"), 31);
+  assert.equal(remainingSuit(before, "hearts"), 103);
+  assert.equal(remainingSuit(before, "clubs"), 103);
+
+  completeHand(store);
+  const after = projectRemainingComposition(store.read(TABLE_STREAM));
+  assert.deepEqual(after, before);
+
+  // The old K, 7 on seat 1 are gone from the pile: a fresh K K on seat 1 splits.
+  observeCard(store, { rank: "K", seat: "1" });
+  observeCard(store, { rank: "K", seat: "1" });
+  splitHand(store, { seat: "1" });
+  const continued = projectRemainingComposition(store.read(TABLE_STREAM));
+  assert.equal(remainingRank(continued, "K"), 29);
+  assert.equal(remainingRank(continued, "7"), 31);
+  assert.equal(remainingRank(continued, "A"), 31);
+  assert.equal(remainingSuit(continued, "hearts"), 103);
+  assert.equal(remainingSuit(continued, "clubs"), 103);
+
+  const response = handleHttp(store, { method: "GET", path: REMAINING_PATH });
+  assert.equal(response.status, 200);
+});
+
+test("GWT G1 felt_next_hand: after NEXT HAND a suit press and Backspace append nothing (shell)", () => {
+  const { store, calls, shell } = wired();
+  shell.pressNewShoe();
+  shell.pressRank("K");
+  shell.pressSuit("spades");
+  shell.pressSuit("hearts");
+  shell.pressRank("K");
+  shell.pressSuit("spades");
+  assert.equal(shell.pressSplit().rejected, false);
+  assert.equal(shell.pressNextHand().rejected, false);
+  const cleared = store.read(TABLE_STREAM);
+  assert.equal(cleared.at(-1)?.type, "hand_completed");
+  const html = shell.html();
+  calls.length = 0;
+
+  assert.equal(shell.pressSuit("hearts").rejected, true);
+  assert.equal(shell.pressSuit("diamonds").rejected, true);
+  assert.equal(shell.pressWithdraw().rejected, true);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(store.read(TABLE_STREAM), cleared);
+  assert.equal(shell.html(), html);
+  assert.equal(shell.focusKey(), "1");
+});
+
+test("GWT G1 felt_next_hand: mounted page ignores suit key, suit-pad click and Backspace after NEXT HAND", () => {
+  const { document } = parseHTML('<html><body><div id="app"></div></body></html>');
+  const listeners: ((event: { key?: string; preventDefault?: () => void }) => void)[] = [];
+  const host = {
+    querySelector: (selector: string) => document.querySelector(selector),
+    addEventListener: (
+      type: string,
+      listener: (event: { key?: string; preventDefault?: () => void }) => void,
+    ) => {
+      if (type === "keydown") listeners.push(listener);
+    },
+  };
+  const store = mountNewShoePage(host as unknown as Parameters<typeof mountNewShoePage>[0], () => true);
+  const key = (value: string) => {
+    for (const listener of listeners) listener({ key: value, preventDefault: () => {} });
+  };
+  assert.equal(listeners.length, 1);
+  click(document.querySelector("#shuffleBtn"));
+  // Seat 1 header before each rank, top-row '[' then numpad '-' (both K).
+  click(document.querySelector('[data-seat="1"] .seat-round'));
+  key("[");
+  key("x");
+  click(document.querySelector('[data-seat="1"] .seat-round'));
+  key("-");
+  key("s");
+  const beforeSplit = store.read(TABLE_STREAM);
+  assert.deepEqual(
+    beforeSplit.filter((event) => event.type === "card_observed").map((event) => event.seat),
+    ["1", "1"],
+  );
+  click(document.querySelector("#splitBtn-1"));
+  assert.equal(store.read(TABLE_STREAM).at(-1)?.type, "hand_split");
+  click(document.querySelector("#nextHandBtn"));
+  const cleared = store.read(TABLE_STREAM);
+  assert.equal(cleared.at(-1)?.type, "hand_completed");
+  const html = document.querySelector("#app")?.innerHTML ?? "";
+
+  key("x");
+  click(document.querySelector('#suitGrid button[data-suit="diamonds"]'));
+  key("Backspace");
+  assert.deepEqual(store.read(TABLE_STREAM), cleared);
+  assert.equal(document.querySelector("#app")?.innerHTML ?? "", html);
+  assert.equal(html.includes("class=\"mini"), false);
 });
