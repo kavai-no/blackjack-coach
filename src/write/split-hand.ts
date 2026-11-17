@@ -1,16 +1,14 @@
 import type { Rank } from "../counting/maps.ts";
-import type { DomainEvent, Seat } from "./events.ts";
+import { sameSplitValue } from "../felt/split-value.ts";
+import { PLAYER_SEATS, type DomainEvent, type Seat } from "./events.ts";
 import {
   TABLE_STREAM,
   type InMemoryEventStore,
 } from "./in-memory-store.ts";
 import type { CommandAck } from "./start-shoe.ts";
 
-/**
- * Felt chrome default. Hero-seat domain fact stays parked.
- * Non-hero split is out of scope.
- */
-const HERO_SEAT: Seat = "1";
+/** Original seat key for the dealer. HCL names it 'dealer' (dealer_cannot_split). */
+const DEALER_SEAT: Seat = "D";
 
 export type SplitHandCommand = {
   seat: Seat;
@@ -18,8 +16,12 @@ export type SplitHandCommand = {
 
 /**
  * Split hand.
- * Appends `hand_split` for the hero seat when it holds exactly two cards
- * of the same rank (K+K yes, 10+K no).
+ * Appends `hand_split` for any player seat 1-7 (split_on_every_player_seat)
+ * when that seat's unsplit hand holds exactly its first two cards of this
+ * hand (split_first_two_cards_only) with the same point value
+ * (split_same_point_value: K+K and 10+K yes, 9+K no).
+ * The dealer cannot split (dealer_cannot_split). A pile key such as `1A`
+ * is not a Seat, so a split pile can never be split again.
  */
 export function splitHand(
   store: InMemoryEventStore,
@@ -39,8 +41,12 @@ export function splitHand(
 }
 
 function assertCanSplit(history: readonly DomainEvent[], seat: Seat): void {
-  if (seat !== HERO_SEAT) {
-    throw new Error("split_hand is hero-only");
+  if (seat === DEALER_SEAT) {
+    throw new Error("split_hand rejected: the dealer cannot split");
+  }
+  // Runtime guard for untyped callers: only a base player seat splits.
+  if (!(PLAYER_SEATS as readonly string[]).includes(seat)) {
+    throw new Error("split_hand rejected: a split pile cannot be split again");
   }
 
   let shoe = false;
@@ -72,9 +78,13 @@ function assertCanSplit(history: readonly DomainEvent[], seat: Seat): void {
     throw new Error("split_hand requires a shoe");
   }
   if (split) {
-    throw new Error("split_hand seat is already split");
+    throw new Error("split_hand rejected: seat is already split");
   }
-  if (ranks.length !== 2 || ranks[0] !== ranks[1]) {
-    throw new Error("split_hand requires exactly two cards of the same rank");
+  const [first, second] = ranks;
+  if (ranks.length !== 2 || first === undefined || second === undefined) {
+    throw new Error("split_hand rejected: split is only allowed on the first two cards");
+  }
+  if (!sameSplitValue(first, second)) {
+    throw new Error("split_hand rejected: cards must have the same point value");
   }
 }

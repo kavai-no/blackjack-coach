@@ -49,7 +49,7 @@ export type CardSuitSet = {
   seat: CardSeat;
 };
 
-/** Hero seat split into piles A and B. Counts and remaining do not change. */
+/** Player seat (1-7) split into piles A and B. Counts and remaining do not change. */
 export type HandSplit = {
   type: "hand_split";
   seat: Seat;

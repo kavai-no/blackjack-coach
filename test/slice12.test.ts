@@ -132,7 +132,7 @@ test("POST /commands/split-hand is seat only and returns ack, events, position o
   ]);
   assert.equal(projected.screen.focus_seat, "1");
   assert.equal(projected.screen.hero_seat, "1");
-  assert.equal(projected.screen.split_button_visible, false);
+  assert.deepEqual(projected.screen.split_ready_seats, []);
   assert.equal("remaining_by_rank" in projected, false);
   assert.equal("acesLeft" in projected, false);
   assert.equal(
@@ -175,7 +175,7 @@ test("POST split-hand without a real seat is 400 and does not append", () => {
   assert.equal(get.status, 404);
 });
 
-test("POST split-hand reuses the pair rule: K+K and 10+10 split; 10+K does not", () => {
+test("POST split-hand reuses the split rules: K+K, 10+10 and 10+K split; 9+K does not; seat 2 splits", () => {
   const kings = createInMemoryEventStore();
   const handleKings = (request: HttpRequest) => handleHttp(kings, request);
   start(handleKings);
@@ -209,18 +209,35 @@ test("POST split-hand reuses the pair rule: K+K and 10+10 split; 10+K does not",
   start(handleTenKing);
   observe(handleTenKing, "10", "1");
   observe(handleTenKing, "K", "1");
-  const before = tenKing.read(TABLE_STREAM).map((event) => event.type);
-  assert.throws(
-    () =>
+  // split_hand_mixed_ten_values: 10 and K share point value 10.
+  assert.equal(
+    ackBody(
       handleTenKing({
         method: "POST",
         path: SPLIT_HAND_PATH,
         body: { seat: "1" },
       }),
-    /same rank/,
+    ).events[0]?.type,
+    "hand_split",
+  );
+
+  const nineKing = createInMemoryEventStore();
+  const handleNineKing = (request: HttpRequest) => handleHttp(nineKing, request);
+  start(handleNineKing);
+  observe(handleNineKing, "K", "1");
+  observe(handleNineKing, "9", "1");
+  const before = nineKing.read(TABLE_STREAM).map((event) => event.type);
+  assert.throws(
+    () =>
+      handleNineKing({
+        method: "POST",
+        path: SPLIT_HAND_PATH,
+        body: { seat: "1" },
+      }),
+    /same point value/,
   );
   assert.deepEqual(
-    tenKing.read(TABLE_STREAM).map((event) => event.type),
+    nineKing.read(TABLE_STREAM).map((event) => event.type),
     before,
   );
 
@@ -229,19 +246,24 @@ test("POST split-hand reuses the pair rule: K+K and 10+10 split; 10+K does not",
   start(handleOther);
   observe(handleOther, "Q", "2");
   observe(handleOther, "Q", "2");
-  assert.throws(
-    () =>
+  // split_hand_other_player_seat: no hero precondition.
+  assert.deepEqual(
+    ackBody(
       handleOther({
         method: "POST",
         path: SPLIT_HAND_PATH,
         body: { seat: "2" },
       }),
-    /hero-only/,
+    ).events.map(({ position: _position, ...fact }) => fact),
+    [{ type: "hand_split", seat: "2" }],
   );
-  assert.equal(
-    other.read(TABLE_STREAM).some((event) => event.type === "hand_split"),
-    false,
-  );
+  // split_hand_resplit_pile_rejected: a pile key is not a split seat.
+  const resplit = handleOther({
+    method: "POST",
+    path: SPLIT_HAND_PATH,
+    body: { seat: "2A" },
+  });
+  assert.equal(resplit.status, 400);
 
   assert.throws(
     () =>
@@ -272,17 +294,17 @@ test("POST split-hand reuses the pair rule: K+K and 10+10 split; 10+K does not",
 
 test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", () => {
   const { store, calls, shell } = wired();
-  assert.equal(shell.pressSplit().rejected, true);
+  assert.equal(shell.pressSplit("1").rejected, true);
   assert.equal(/split/i.test(shell.html()), false);
 
   shell.pressNewShoe();
   calls.length = 0;
-  assert.equal(shell.pressSplit().rejected, true);
+  assert.equal(shell.pressSplit("1").rejected, true);
   assert.equal(calls.length, 0);
   assert.equal(/split/i.test(shell.html()), false);
 
   shell.pressRank("K");
-  assert.equal(shell.pressSplit().rejected, true);
+  assert.equal(shell.pressSplit("1").rejected, true);
   assert.equal(shell.html().includes("splitBtn"), false);
 
   shell.pressRank("K");
@@ -300,7 +322,7 @@ test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", (
   assert.equal((shell.html().match(/split-btn/g) ?? []).length, 1);
   calls.length = 0;
 
-  const pressed = shell.pressSplit();
+  const pressed = shell.pressSplit("1");
   assert.equal(pressed.rejected, false);
   if (pressed.rejected) return;
   assert.deepEqual(
@@ -325,7 +347,7 @@ test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", (
     { seat: "1", hand: "B", cards: [{ rank: "K", suit: null }] },
   ]);
   assert.deepEqual(felt.seat_piles.find((pile) => pile.seat === "1")?.cards, []);
-  assert.equal(felt.screen.split_button_visible, false);
+  assert.deepEqual(felt.screen.split_ready_seats, []);
   assert.equal(felt.screen.focus_seat, "1");
   assert.equal(felt.screen.hero_seat, "1");
   assert.equal(felt.screen.active_split, "1A");
@@ -372,7 +394,7 @@ test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", (
   );
 
   calls.length = 0;
-  assert.equal(shell.pressSplit().rejected, true);
+  assert.equal(shell.pressSplit("1").rejected, true);
   assert.deepEqual(calls, []);
   assert.equal(
     store.read(TABLE_STREAM).filter((event) => event.type === "hand_split").length,
@@ -380,22 +402,28 @@ test("GWT hero pair shows #splitBtn-1; press paints A/B and hides the button", (
   );
 });
 
-test("GWT split button stays hidden for 10+K, one card, and three of a kind", () => {
+test("GWT split button shows for 10+K; hidden for K+9, one card, and three of a kind", () => {
   const tenKing = wired();
   tenKing.shell.pressNewShoe();
   tenKing.shell.pressRank("10");
   tenKing.shell.pressRank("K");
-  assert.equal(tenKing.shell.html().includes("splitBtn"), false);
-  assert.equal(/split/i.test(tenKing.shell.html()), false);
+  assert.equal(tenKing.shell.html().includes('id="splitBtn-1"'), true);
   tenKing.calls.length = 0;
-  assert.equal(tenKing.shell.pressSplit().rejected, true);
-  assert.deepEqual(tenKing.calls, []);
-  assert.match(
-    tenKing.shell.html(),
-    /id="hand-1"><div class="mini rank-only" data-rank="10" data-suit=""><span class="corner top-left">T<\/span><span class="corner bottom-right">T<\/span><\/div><div class="mini rank-only" data-rank="K" data-suit=""><span class="corner top-left">K<\/span><span class="corner bottom-right">K<\/span><\/div><\/div><\/section>/,
-  );
+  assert.equal(tenKing.shell.pressSplit("1").rejected, false);
+  assert.deepEqual(tenKing.calls[0], { method: "POST", path: SPLIT_HAND_PATH, body: { seat: "1" } });
+  assert.equal(tenKing.store.read(TABLE_STREAM).at(-1)?.type, "hand_split");
+
+  const nineKing = wired();
+  nineKing.shell.pressNewShoe();
+  nineKing.shell.pressRank("K");
+  nineKing.shell.pressRank("9");
+  assert.equal(nineKing.shell.html().includes("splitBtn"), false);
+  assert.equal(/split/i.test(nineKing.shell.html()), false);
+  nineKing.calls.length = 0;
+  assert.equal(nineKing.shell.pressSplit("1").rejected, true);
+  assert.deepEqual(nineKing.calls, []);
   assert.equal(
-    tenKing.store.read(TABLE_STREAM).some((event) => event.type === "hand_split"),
+    nineKing.store.read(TABLE_STREAM).some((event) => event.type === "hand_split"),
     false,
   );
 
@@ -406,18 +434,17 @@ test("GWT split button stays hidden for 10+K, one card, and three of a kind", ()
   assert.equal(three.shell.html().includes("splitBtn-1"), true);
   three.shell.pressRank("9");
   assert.equal(three.shell.html().includes("splitBtn"), false);
-  assert.equal(three.shell.pressSplit().rejected, true);
+  assert.equal(three.shell.pressSplit("1").rejected, true);
   assert.equal(
     three.store.read(TABLE_STREAM).some((event) => event.type === "hand_split"),
     false,
   );
 
-  const queen = wired();
-  queen.shell.pressNewShoe();
-  queen.shell.pressRank("Q");
-  queen.shell.pressRank("K");
-  assert.equal(queen.shell.pressSplit().rejected, true);
-  assert.equal(queen.shell.html().includes("split-btn"), false);
+  const one = wired();
+  one.shell.pressNewShoe();
+  one.shell.pressRank("Q");
+  assert.equal(one.shell.pressSplit("1").rejected, true);
+  assert.equal(one.shell.html().includes("split-btn"), false);
 });
 
 test("GWT suited hero pair: split moves the faces onto A and B and leaves the shoe", () => {
@@ -432,7 +459,7 @@ test("GWT suited hero pair: split moves the faces onto A and B and leaves the sh
   const remainingBefore = projectRemainingComposition(before);
   assert.equal(shell.html().includes('id="splitBtn-1"'), true);
 
-  const pressed = shell.pressSplit();
+  const pressed = shell.pressSplit("1");
   assert.equal(pressed.rejected, false);
   if (pressed.rejected) return;
 
@@ -497,7 +524,7 @@ test("split-hand boundary reuses splitHand and does not re-derive piles or open 
 
   assert.match(shellSrc, /SPLIT_HAND_PATH/);
   assert.match(shellSrc, /id="splitBtn-/);
-  assert.match(shellSrc, /split_button_visible/);
+  assert.match(shellSrc, /split_ready_seats/);
   assert.equal(shellSrc.includes("splitHand"), false);
   assert.equal(shellSrc.includes("hand_split"), false);
   assert.equal(shellSrc.includes("projectFeltTable"), false);

@@ -245,20 +245,24 @@ function rankSuitCells(html: string): RankSuitCount[] {
   return view.remaining_by_rank_suit ?? [];
 }
 
-/** Hero `#splitBtn-1` → split hand. The button is absent unless felt shows it. */
+/** Every `#splitBtn-<seat>` → split hand on that seat. A button is absent unless felt shows it. */
 function bindSplit(
   root: AppRoot,
   shell: NewShoeShell,
   paint: () => void,
   showSplit: () => void,
 ): void {
-  root.querySelector("#splitBtn-1")?.addEventListener("click", () => {
-    const result = shell.pressSplit();
-    if (!result.rejected) {
-      showSplit();
-      paint();
-    }
-  });
+  for (const button of Array.from(root.querySelectorAll(".split-btn"))) {
+    const seat = button.getAttribute("id")?.replace(/^splitBtn-/, "");
+    if (!seat) continue;
+    button.addEventListener("click", () => {
+      const result = shell.pressSplit(seat);
+      if (!result.rejected) {
+        showSplit();
+        paint();
+      }
+    });
+  }
 }
 
 /** Suit pad → POST set-suit on the focus seat. Rejected when no card is there. */

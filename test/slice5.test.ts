@@ -77,23 +77,43 @@ test("GWT split_hand_happy: shoe + two same-rank observes on hero → hand_split
   assert.equal("mini_card_face" in result, false);
 });
 
-test("GWT pair rule: same rank splits; 10+K and K+Q do not", () => {
-  const jacks = dealt([
-    { rank: "J", seat: "1" },
-    { rank: "J", seat: "1" },
-  ]);
-  const tens = dealt([
-    { rank: "10", seat: "1" },
-    { rank: "10", seat: "1" },
-  ]);
-  const tenKing = dealt([
-    { rank: "10", seat: "1" },
-    { rank: "K", seat: "1" },
-  ]);
-  const kingQueen = dealt([
-    { rank: "K", seat: "1" },
-    { rank: "Q", seat: "1" },
-  ]);
+test("GWT split_same_point_value: same point value splits; 10/J/Q/K mix, 9+K does not", () => {
+  // split_same_point_value (03, 2026-11-17 ~01:44): 10, J, Q, K all count 10.
+  const pairs: [Rank, Rank][] = [
+    ["J", "J"],
+    ["10", "10"],
+    ["10", "K"],
+    ["K", "Q"],
+    ["10", "J"],
+    ["J", "Q"],
+    ["A", "A"],
+    ["8", "8"],
+  ];
+  for (const [first, second] of pairs) {
+    const store = dealt([
+      { rank: first, seat: "1" },
+      { rank: second, seat: "1" },
+    ]);
+    assert.equal(splitHand(store, { seat: "1" }).events[0]?.type, "hand_split", `${first}+${second}`);
+  }
+
+  // split_hand_different_values_rejected: K♥ then 9♠.
+  for (const [first, second] of [
+    ["K", "9"],
+    ["A", "K"],
+    ["2", "3"],
+  ] as const) {
+    const store = dealt([
+      { rank: first, seat: "1" },
+      { rank: second, seat: "1" },
+    ]);
+    const before = store.read(TABLE_STREAM).map((event) => event.type);
+    assert.throws(() => splitHand(store, { seat: "1" }), /same point value/);
+    assert.deepEqual(store.read(TABLE_STREAM).map((event) => event.type), before);
+  }
+});
+
+test("GWT split_first_two_cards_only: one, three and zero cards do not split", () => {
   const one = dealt([{ rank: "K", seat: "1" }]);
   const three = dealt([
     { rank: "K", seat: "1" },
@@ -101,42 +121,37 @@ test("GWT pair rule: same rank splits; 10+K and K+Q do not", () => {
     { rank: "K", seat: "1" },
   ]);
   const none = dealt([]);
-
-  assert.equal(splitHand(jacks, { seat: "1" }).events[0]?.type, "hand_split");
-  assert.equal(splitHand(tens, { seat: "1" }).events[0]?.type, "hand_split");
-
-  for (const store of [tenKing, kingQueen, one, three, none]) {
+  for (const store of [one, three, none]) {
     const before = store.read(TABLE_STREAM).map((event) => event.type);
-    assert.throws(() => splitHand(store, { seat: "1" }), /same rank/);
-    assert.deepEqual(
-      store.read(TABLE_STREAM).map((event) => event.type),
-      before,
-    );
+    assert.throws(() => splitHand(store, { seat: "1" }), /first two cards/);
+    assert.deepEqual(store.read(TABLE_STREAM).map((event) => event.type), before);
   }
 });
 
-test("GWT hero-only: a pair on another seat does not split", () => {
-  const other = dealt([
-    { rank: "K", seat: "2" },
-    { rank: "K", seat: "2" },
-  ]);
+test("GWT split_hand_other_player_seat: any player seat 1-7 splits; split_hand_dealer_rejected", () => {
+  // split_on_every_player_seat (03, 2026-11-17 ~01:24): no hero precondition.
+  for (const seat of ["1", "2", "3", "4", "5", "6", "7"] as const) {
+    const store = dealt([
+      { rank: "K", seat },
+      { rank: "K", seat },
+    ]);
+    const ack = splitHand(store, { seat });
+    assert.deepEqual(
+      ack.events.map(({ position: _position, ...fact }) => fact),
+      [{ type: "hand_split", seat }],
+    );
+  }
   const dealer = dealt([
     { rank: "A", seat: "D" },
     { rank: "A", seat: "D" },
   ]);
-
-  for (const [store, seat] of [
-    [other, "2"],
-    [dealer, "D"],
-  ] as const) {
-    const before = store.read(TABLE_STREAM).length;
-    assert.throws(() => splitHand(store, { seat }), /hero-only/);
-    assert.equal(store.read(TABLE_STREAM).length, before);
-    assert.equal(
-      store.read(TABLE_STREAM).some((event) => event.type === "hand_split"),
-      false,
-    );
-  }
+  const before = dealer.read(TABLE_STREAM).length;
+  assert.throws(() => splitHand(dealer, { seat: "D" }), /dealer cannot split/);
+  assert.equal(dealer.read(TABLE_STREAM).length, before);
+  assert.equal(
+    dealer.read(TABLE_STREAM).some((event) => event.type === "hand_split"),
+    false,
+  );
 });
 
 test("GWT already split: second split does not append; a new shoe can split again", () => {
@@ -185,7 +200,7 @@ test("GWT felt_table_piles_after_cards: hero pair becomes split A/B; order D,7..
   setSuit(store, { suit: "diamonds", seat: "1" });
 
   const before = projectFeltTable(store.read(TABLE_STREAM));
-  assert.equal(before.screen.split_button_visible, true);
+  assert.deepEqual(before.screen.split_ready_seats, ["1"]);
   assert.equal(before.screen.hero_seat, "1");
 
   splitHand(store, { seat: "1" });
@@ -234,7 +249,7 @@ test("GWT felt_table_piles_after_cards: hero pair becomes split A/B; order D,7..
   );
   assert.equal(felt.screen.focus_seat, "1");
   assert.equal(felt.screen.hero_seat, "1");
-  assert.equal(felt.screen.split_button_visible, false);
+  assert.deepEqual(felt.screen.split_ready_seats, []);
   assert.equal(felt.screen.new_shoe, "start_shoe");
   assert.equal(felt.screen.next_hand, "complete_hand");
 });
@@ -262,60 +277,55 @@ test("GWT felt unsuit pair: A/B stay rank-only, no mini face", () => {
   ]);
 });
 
-test("GWT felt_table_screen_split_and_select: split button only for an unsplit hero pair", () => {
+test("GWT felt_table_screen_split_and_select: split ready on any unsplit same-value player pair", () => {
   const heroPair = dealt([
     { rank: "K", seat: "1" },
     { rank: "K", seat: "1" },
   ]);
   const open = projectFeltTable(heroPair.read(TABLE_STREAM));
-  assert.equal(open.screen.split_button_visible, true);
+  assert.deepEqual(open.screen.split_ready_seats, ["1"]);
   assert.equal(open.screen.focus_seat, "1");
   assert.equal(open.screen.hero_seat, "1");
   setSuit(heroPair, { suit: "hearts", seat: "1" });
-  assert.equal(
-    projectFeltTable(heroPair.read(TABLE_STREAM)).screen.split_button_visible,
-    true,
-  );
+  assert.deepEqual(projectFeltTable(heroPair.read(TABLE_STREAM)).screen.split_ready_seats, ["1"]);
 
+  // felt_table_split_mixed_ten_values: 10 and K share point value 10.
   const tenKing = dealt([
     { rank: "10", seat: "1" },
     { rank: "K", seat: "1" },
   ]);
-  assert.equal(
-    projectFeltTable(tenKing.read(TABLE_STREAM)).screen.split_button_visible,
-    false,
-  );
+  assert.deepEqual(projectFeltTable(tenKing.read(TABLE_STREAM)).screen.split_ready_seats, ["1"]);
+  // felt_table_split_unavailable_mixed_ranks: K and 9 differ.
+  const kingNine = dealt([
+    { rank: "K", seat: "1" },
+    { rank: "9", seat: "1" },
+  ]);
+  assert.deepEqual(projectFeltTable(kingNine.read(TABLE_STREAM)).screen.split_ready_seats, []);
 
+  // felt_table_split_other_player_seat: seat 3 is ready; the dealer never is.
   const otherSeat = dealt([
     { rank: "Q", seat: "3" },
     { rank: "Q", seat: "3" },
+    { rank: "A", seat: "D" },
+    { rank: "A", seat: "D" },
   ]);
   const other = projectFeltTable(otherSeat.read(TABLE_STREAM));
-  assert.equal(other.screen.split_button_visible, false);
+  assert.deepEqual(other.screen.split_ready_seats, ["3"]);
   assert.equal(other.screen.hero_seat, "1");
   assert.deepEqual(other.split_piles, []);
 
   const single = dealt([{ rank: "A", seat: "1" }]);
-  assert.equal(
-    projectFeltTable(single.read(TABLE_STREAM)).screen.split_button_visible,
-    false,
-  );
+  assert.deepEqual(projectFeltTable(single.read(TABLE_STREAM)).screen.split_ready_seats, []);
 
   const three = dealt([
     { rank: "9", seat: "1" },
     { rank: "9", seat: "1" },
     { rank: "9", seat: "1" },
   ]);
-  assert.equal(
-    projectFeltTable(three.read(TABLE_STREAM)).screen.split_button_visible,
-    false,
-  );
+  assert.deepEqual(projectFeltTable(three.read(TABLE_STREAM)).screen.split_ready_seats, []);
 
   splitHand(heroPair, { seat: "1" });
-  assert.equal(
-    projectFeltTable(heroPair.read(TABLE_STREAM)).screen.split_button_visible,
-    false,
-  );
+  assert.deepEqual(projectFeltTable(heroPair.read(TABLE_STREAM)).screen.split_ready_seats, []);
 });
 
 test("GWT counts unchanged by split alone", () => {
