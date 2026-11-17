@@ -272,7 +272,7 @@ test("POST complete-hand ignores a body, still appends on an empty live shoe, an
   assert.deepEqual(get.body, { error: "not_found" });
 });
 
-test("GWT NEXT HAND clears split piles and keeps the shoe; a second press still posts", () => {
+test("GWT complete_hand_happy: K♠ → K♥, K♠ split on seat 1; NEXT HAND clears split piles and keeps the shoe; a second press still posts", () => {
   const { store, calls, handle, shell } = wired();
   assert.match(shell.html(), /id="nextHandBtn"/);
   assert.match(shell.html(), />NEXT HAND</);
@@ -288,23 +288,38 @@ test("GWT NEXT HAND clears split piles and keeps the shoe; a second press still 
   assert.equal(ackBody(empty.post).events[0]?.type, "hand_completed");
   calls.length = 0;
 
+  // Exact Given of complete_hand_happy (03): K♠ corrected to K♥, then K♠, split seat 1.
   shell.pressRank("K");
   shell.pressSuit("spades");
+  shell.pressSuit("hearts");
   shell.pressRank("K");
-  shell.pressSuit("diamonds");
+  shell.pressSuit("spades");
   const split = shell.pressSplit();
   assert.equal(split.rejected, false);
-  observe(handle, "6", "D");
-  suit(handle, "hearts", "D");
   const dealt = store.read(TABLE_STREAM);
+  assert.deepEqual(
+    dealt.slice(-6).map(({ position: _position, ...fact }) => fact),
+    [
+      { type: "card_observed", rank: "K", seat: "1" },
+      { type: "card_suit_set", suit: "spades", seat: "1" },
+      { type: "card_suit_set", suit: "hearts", seat: "1" },
+      { type: "card_observed", rank: "K", seat: "1" },
+      { type: "card_suit_set", suit: "spades", seat: "1" },
+      { type: "hand_split", seat: "1" },
+    ],
+  );
   const countsBefore = projectCountsInfoBar(dealt);
   const remainingBefore = projectRemainingComposition(dealt);
   const feltBefore = projectFeltTable(dealt);
-  assert.equal(feltBefore.split_piles.length, 2);
-  assert.equal(
-    feltBefore.seat_piles.find((pile) => pile.seat === "D")?.cards.length,
-    1,
+  assert.deepEqual(
+    feltBefore.split_piles.map((pile) => [pile.seat, pile.hand, pile.cards.map((card) => `${card.rank}${card.suit}`)]),
+    [
+      ["1", "A", ["Khearts"]],
+      ["1", "B", ["Kspades"]],
+    ],
   );
+  assert.equal(countsBefore.penetration, "P: 0.48%");
+  assert.equal(countsBefore.hilo_display, "Hi-Lo: -2 / -0.25");
   assert.match(shell.html(), /id="split-1"/);
   calls.length = 0;
 
@@ -625,4 +640,73 @@ test("GWT remaining counts persist across hand_completed while per-seat cards cl
 
   const response = handleHttp(store, { method: "GET", path: REMAINING_PATH });
   assert.equal(response.status, 200);
+});
+
+test("GWT G1 felt_next_hand: after NEXT HAND a suit press and Backspace append nothing (shell)", () => {
+  const { store, calls, shell } = wired();
+  shell.pressNewShoe();
+  shell.pressRank("K");
+  shell.pressSuit("spades");
+  shell.pressSuit("hearts");
+  shell.pressRank("K");
+  shell.pressSuit("spades");
+  assert.equal(shell.pressSplit().rejected, false);
+  assert.equal(shell.pressNextHand().rejected, false);
+  const cleared = store.read(TABLE_STREAM);
+  assert.equal(cleared.at(-1)?.type, "hand_completed");
+  const html = shell.html();
+  calls.length = 0;
+
+  assert.equal(shell.pressSuit("hearts").rejected, true);
+  assert.equal(shell.pressSuit("diamonds").rejected, true);
+  assert.equal(shell.pressWithdraw().rejected, true);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(store.read(TABLE_STREAM), cleared);
+  assert.equal(shell.html(), html);
+  assert.equal(shell.focusKey(), "1");
+});
+
+test("GWT G1 felt_next_hand: mounted page ignores suit key, suit-pad click and Backspace after NEXT HAND", () => {
+  const { document } = parseHTML('<html><body><div id="app"></div></body></html>');
+  const listeners: ((event: { key?: string; preventDefault?: () => void }) => void)[] = [];
+  const host = {
+    querySelector: (selector: string) => document.querySelector(selector),
+    addEventListener: (
+      type: string,
+      listener: (event: { key?: string; preventDefault?: () => void }) => void,
+    ) => {
+      if (type === "keydown") listeners.push(listener);
+    },
+  };
+  const store = mountNewShoePage(host as unknown as Parameters<typeof mountNewShoePage>[0], () => true);
+  const key = (value: string) => {
+    for (const listener of listeners) listener({ key: value, preventDefault: () => {} });
+  };
+  assert.equal(listeners.length, 1);
+  click(document.querySelector("#shuffleBtn"));
+  // Seat 1 header before each rank, top-row '[' then numpad '-' (both K).
+  click(document.querySelector('[data-seat="1"] .seat-round'));
+  key("[");
+  key("x");
+  click(document.querySelector('[data-seat="1"] .seat-round'));
+  key("-");
+  key("s");
+  const beforeSplit = store.read(TABLE_STREAM);
+  assert.deepEqual(
+    beforeSplit.filter((event) => event.type === "card_observed").map((event) => event.seat),
+    ["1", "1"],
+  );
+  click(document.querySelector("#splitBtn-1"));
+  assert.equal(store.read(TABLE_STREAM).at(-1)?.type, "hand_split");
+  click(document.querySelector("#nextHandBtn"));
+  const cleared = store.read(TABLE_STREAM);
+  assert.equal(cleared.at(-1)?.type, "hand_completed");
+  const html = document.querySelector("#app")?.innerHTML ?? "";
+
+  key("x");
+  click(document.querySelector('#suitGrid button[data-suit="diamonds"]'));
+  key("Backspace");
+  assert.deepEqual(store.read(TABLE_STREAM), cleared);
+  assert.equal(document.querySelector("#app")?.innerHTML ?? "", html);
+  assert.equal(html.includes("class=\"mini"), false);
 });

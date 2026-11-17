@@ -192,15 +192,14 @@ async function clickSeat(page: Page, seat: string): Promise<void> {
   await page.locator(`[data-seat="${seat}"] .seat-round`).click();
 }
 
-/** Hero ring is `.your-seat`. Double-click also lands the focus ring via click. */
-async function assertHeroSelected(page: Page): Promise<void> {
+/**
+ * Focus ring on seat 1 only. No hero step: split needs no hero
+ * (split_on_every_player_seat, 03; mentor B2 closed 2026-11-17).
+ */
+async function assertFocusOnSeat1(page: Page): Promise<void> {
   const seat = page.locator('[data-seat="1"] .seat-round');
-  assert.equal(await seat.evaluate((element) => element.classList.contains("your-seat")), true);
   assert.equal(await seat.evaluate((element) => element.classList.contains("active")), true);
-  const shadow = await seat.evaluate((element) => getComputedStyle(element).boxShadow);
-  assert.match(shadow, /rgba?\(34,\s*197,\s*94/);
-  assert.match(shadow, /rgb\(0,\s*255,\s*136\)/);
-  assert.equal(await page.locator(".seat-round.your-seat").count(), 1);
+  assert.equal(await page.locator(".seat-round.active").count(), 1);
 }
 
 /** Original styles.css:38: every `.hand` is a flex column on every screen. */
@@ -244,12 +243,9 @@ test("felt_next_hand: NEXT HAND clears split A/B and keeps the shoe", async () =
     assert.match(page.url(), /\/blackjack-coach\/?$/);
     assert.deepEqual(await readHistory(page), []);
 
-    await page.locator('[data-seat="1"] .seat-round').dblclick();
-    await assertHeroSelected(page);
-
     await page.getByRole("button", { name: "NEW SHOE" }).click();
     await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
-    await assertHeroSelected(page);
+    await assertFocusOnSeat1(page);
     assert.deepEqual((await readHistory(page)).map((event) => event.type), ["shoe_started"]);
     assert.equal((await readHistory(page))[0]?.decks, 8);
 
@@ -319,7 +315,7 @@ test("felt_next_hand: NEXT HAND clears split A/B and keeps the shoe", async () =
     assert.equal(await page.locator("#hand-1").isVisible(), false);
     assert.equal(await page.locator("#splitBtn-1").count(), 0);
     assert.equal(await page.getByRole("button", { name: "SPLIT" }).count(), 0);
-    await assertHeroSelected(page);
+    await assertFocusOnSeat1(page);
     assert.deepEqual(
       await page.locator("[data-seat]").evaluateAll((nodes) =>
         nodes.map((node) => node.getAttribute("data-seat")),
@@ -404,7 +400,7 @@ test("felt_next_hand: NEXT HAND clears split A/B and keeps the shoe", async () =
       assert.equal((await hand.innerText()).trim(), "");
       await assertHandLayout(hand);
     }
-    await assertHeroSelected(page);
+    await assertFocusOnSeat1(page);
     assert.equal(await page.locator(".seat-round.active").count(), 1);
     assert.equal(
       await page.locator('[data-seat="7"] .seat-round').evaluate((element) =>
@@ -412,6 +408,23 @@ test("felt_next_hand: NEXT HAND clears split A/B and keeps the shoe", async () =
       ),
       false,
     );
+    assert.deepEqual(await infoBar(page), capturedInfo);
+    assert.deepEqual(await rankCounts(page), capturedRanks);
+    assert.deepEqual(await suitTips(page), capturedSuits);
+
+    // G1 (felt_next_hand, 03): before any new card, a suit key, a suit-pad
+    // click and Backspace append nothing. The pre-NEXT HAND K♠ is no longer
+    // a suit or withdraw target (original lastAddedCard = null, script.js:200).
+    await page.keyboard.press("x");
+    const suitPad = page.locator('#suitGrid button[data-suit="diamonds"]');
+    assert.equal(await suitPad.isVisible(), true);
+    assert.equal(await suitPad.isEnabled(), true);
+    await suitPad.click();
+    await page.keyboard.press("Backspace");
+    assert.deepEqual(await readHistory(page), cleared);
+    assert.equal(await page.locator(".mini").count(), 0);
+    assert.equal(await page.locator(".hand-total").count(), 0);
+    await assertFocusOnSeat1(page);
     assert.deepEqual(await infoBar(page), capturedInfo);
     assert.deepEqual(await rankCounts(page), capturedRanks);
     assert.deepEqual(await suitTips(page), capturedSuits);
@@ -434,7 +447,7 @@ test("felt_next_hand: NEXT HAND clears split A/B and keeps the shoe", async () =
       assert.equal((await hand.innerText()).trim(), "");
       await assertHandLayout(hand);
     }
-    await assertHeroSelected(page);
+    await assertFocusOnSeat1(page);
     assert.deepEqual(await infoBar(page), capturedInfo);
     assert.deepEqual(await rankCounts(page), capturedRanks);
     assert.deepEqual(await suitTips(page), capturedSuits);
