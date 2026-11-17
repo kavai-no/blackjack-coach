@@ -99,7 +99,8 @@ function fullShoe(decks: number): RemainingComposition {
 }
 
 /** Remaining composition.
- *  Shoe started fills the shoe. Hand completed leaves it.
+ *  Shoe started fills the shoe. Hand completed leaves it, but clears the
+ *  per-pile card tracking, like the felt and withdraw piles do.
  *  Card observed decrements that rank on the outer ring only.
  *  Card suit set moves one unit onto that suit (and that rank×suit).
  *  A later suit on the same card moves the unit off the previous suit.
@@ -114,6 +115,8 @@ export function projectRemainingComposition(
   for (const event of events) {
     if (event.type === "shoe_started") {
       composition = fullShoe(event.decks);
+      tracked = emptyTracked();
+    } else if (event.type === "hand_completed") {
       tracked = emptyTracked();
     } else if (event.type === "card_observed" && composition) {
       const slice = composition.remaining_by_rank.find(

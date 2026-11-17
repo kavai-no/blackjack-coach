@@ -477,3 +477,77 @@ test("felt_next_hand: NEXT HAND clears split A/B and keeps the shoe", async () =
     await close(server, browser);
   }
 });
+
+/** Seat 1 had a card last hand. K K on seat 1 must still split into 1A/1B. */
+async function dealKingsAndSplit(page: Page): Promise<void> {
+  await clickSeat(page, "1");
+  await page.locator('#cardsGrid button[data-rank="K"]').click();
+  await page.locator("#hand-1 .mini").first().waitFor();
+  await clickSeat(page, "1");
+  await page.locator('#cardsGrid button[data-rank="K"]').click();
+  await page.locator("#hand-1 .mini").nth(1).waitFor();
+  const split = page.locator("#splitBtn-1");
+  assert.equal(await split.isVisible(), true);
+  await split.click();
+  await page.locator('#app[data-screen="felt_split"]').waitFor();
+  await page.locator("#hand-1A .mini").waitFor();
+  await page.locator("#hand-1B .mini").waitFor();
+  assert.equal(await page.locator("#hand-1A .mini").count(), 1);
+  assert.equal(await page.locator("#hand-1B .mini").count(), 1);
+  assert.equal(await page.locator("#hand-1").locator(".mini").count(), 0);
+  const history = await readHistory(page);
+  assert.equal(history.at(-1)?.type, "hand_split");
+  assert.equal(history.at(-1)?.seat, "1");
+}
+
+for (const boundary of ["NEXT HAND", "NEW SHOE"] as const) {
+  test(`felt_next_hand: seat 1 splits after ${boundary} when it held a card last hand`, async () => {
+    buildDist();
+    const { server, origin } = await startServer();
+    let browser: Browser | undefined;
+    try {
+      const opened = await openLive(origin);
+      browser = opened.browser;
+      const page = opened.page;
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      page.on("console", (message) => {
+        if (message.type() === "error") errors.push(message.text());
+      });
+
+      await page.getByRole("button", { name: "NEW SHOE" }).click();
+      await page.locator('#app[data-screen="felt_new_shoe"]').waitFor();
+      await clickSeat(page, "1");
+      await page.locator('#cardsGrid button[data-rank="5"]').click();
+      await page.locator("#hand-1 .mini").first().waitFor();
+
+      await page.getByRole("button", { name: boundary }).click();
+      await page.locator("#hand-1 .mini").waitFor({ state: "detached" });
+      const crossed = await readHistory(page);
+      assert.deepEqual(
+        crossed.slice(-2).map((event) => event.type),
+        boundary === "NEXT HAND"
+          ? ["card_suit_set", "hand_completed"]
+          : ["hand_completed", "shoe_started"],
+      );
+      const kingsBefore = (await rankLabel(page, "K").textContent())?.trim();
+      const fivesBefore = (await rankLabel(page, "5").textContent())?.trim();
+      assert.equal(kingsBefore, "32");
+      assert.equal(fivesBefore, boundary === "NEXT HAND" ? "31" : "32");
+
+      await dealKingsAndSplit(page);
+
+      assert.equal((await rankLabel(page, "K").textContent())?.trim(), "30");
+      assert.equal((await rankLabel(page, "5").textContent())?.trim(), fivesBefore);
+      assert.deepEqual(errors, []);
+      assert.deepEqual(
+        opened.confirms,
+        boundary === "NEXT HAND"
+          ? ["Start fresh 8-deck shoe?"]
+          : ["Start fresh 8-deck shoe?", "Start fresh 8-deck shoe?"],
+      );
+    } finally {
+      await close(server, browser);
+    }
+  });
+}
