@@ -589,8 +589,8 @@ test("withdraw_card_split_b_equal_rank and due_pile_header_click_b_empty_a_done"
       ["8spades", "3spades"],
     );
     assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 11", colour: YELLOW });
-    await assertRing(page, "2");
-    assert.equal(await page.locator("#split-1 .split-hand.active").count(), 0);
+    // Slice 15: A's second card focuses B (keyboard_split_a_then_b_then_next_seat).
+    await assertSplitFocus(page, "B");
 
     await clickSeat(page, "1");
     await assertSplitFocus(page, "A");
@@ -605,7 +605,8 @@ test("withdraw_card_split_b_equal_rank and due_pile_header_click_b_empty_a_done"
       ["8", "3", "K"],
     );
     assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 21", colour: CYAN });
-    await assertSplitFocus(page, "A");
+    // Slice 15: 21 on A advances to open B (keyboard_twenty_one_auto_advances).
+    await assertSplitFocus(page, "B");
     assert.deepEqual(await infoBar(page), {
       p: "P: 0.96%",
       d: "D: 7.92",
@@ -751,7 +752,8 @@ test("felt_withdraw ordinary auto-advance: seat 7, dealer, and a third card", as
     await clickSeat(page, "1");
     await clickRank(page, "9");
     await page.locator('#hand-1 .mini[data-rank="9"]').waitFor();
-    await assertRing(page, "1");
+    // K+K+9 busts, so focus leaves seat 1 (keyboard_twenty_one_auto_advances).
+    await assertRing(page, "2");
 
     await clickSeat(page, "D");
     await clickRank(page, "A");
@@ -784,7 +786,8 @@ test("due_pile_header_click_b_nonempty_a_live", async () => {
     await page.locator('#hand-1A .mini[data-rank="3"][data-suit="spades"]').waitFor();
     assert.equal(await page.locator("#hand-1A .mini").count(), 2);
     assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 11", colour: YELLOW });
-    await assertRing(page, "2");
+    // Slice 15: A's second card focuses B, not seat 2.
+    await assertSplitFocus(page, "B");
     assert.deepEqual(await infoBar(page), {
       p: "P: 0.72%",
       d: "D: 7.94",
@@ -1146,7 +1149,7 @@ test("due_pile_header_click_emptied_a_is_live", async () => {
   }
 });
 
-test("due_pile_header_click_both_done_lands_on_b", async () => {
+test("due_pile_header_click_both_done_lands_on_a", async () => {
   buildDist();
   const { server, origin } = await startServer();
   let browser: Browser | undefined;
@@ -1159,7 +1162,8 @@ test("due_pile_header_click_both_done_lands_on_b", async () => {
 
     await page.keyboard.press("3");
     await page.locator('#hand-1A .mini[data-rank="3"][data-suit="spades"]').waitFor();
-    await assertRing(page, "2");
+    // Slice 15: A's second card focuses B, not seat 2.
+    await assertSplitFocus(page, "B");
     await clickSeat(page, "1");
     await assertSplitFocus(page, "A");
     await page.keyboard.press("[");
@@ -1171,12 +1175,16 @@ test("due_pile_header_click_both_done_lands_on_b", async () => {
       ["8", "3", "K"],
     );
     assert.deepEqual(await pileTotal(page, "A"), { text: "Total: 21", colour: CYAN });
-    await assertSplitFocus(page, "A");
+    // 21 advances onto open B.
+    await assertSplitFocus(page, "B");
 
     await clickSeat(page, "1");
     await assertSplitFocus(page, "B");
     await page.keyboard.press("3");
     await page.locator('#hand-1B .mini[data-rank="3"][data-suit="spades"]').waitFor();
+    // B's second card leaves for the next seat. Click back before the king.
+    await clickSeat(page, "1");
+    await assertSplitFocus(page, "B");
     await page.keyboard.press("[");
     await page.locator('#hand-1B .mini[data-rank="K"][data-suit="spades"]').waitFor();
     assert.deepEqual(
@@ -1192,9 +1200,10 @@ test("due_pile_header_click_both_done_lands_on_b", async () => {
     await clickSeat(page, "2");
     await assertRing(page, "2");
     await clickSeat(page, "1");
-    await assertSplitFocus(page, "B");
+    // Q6 / keyboard_split_header_click_both_done_lands_on_a: both piles done → A.
+    await assertSplitFocus(page, "A");
     await clickSeat(page, "1");
-    await assertSplitFocus(page, "B");
+    await assertSplitFocus(page, "A");
   } finally {
     await close(server, browser);
   }

@@ -619,7 +619,8 @@ test("GWT seat 7's second card and the dealer's first card jump to seat 1; a thi
   shell.pressSeat("1");
   shell.pressRank("9");
   shell.advanceFocus();
-  assert.equal(shell.focusKey(), "1");
+  // K+K+9 busts. Slice 15: 21/bust leaves the pile (keyboard_twenty_one_auto_advances).
+  assert.equal(shell.focusKey(), "2");
 
   shell.pressSeat("D");
   shell.pressRank("A");
@@ -651,7 +652,9 @@ test("GWT split header click lands on the due pile and does not toggle", () => {
 
   shell.pressRank("3");
   shell.advanceFocus();
-  assert.equal(shell.focusKey(), "2");
+  // Slice 15: after the split, A's second card goes to B, not the next seat
+  // (keyboard_split_a_then_b_then_next_seat, Kristoffer 2026-11-12 16:35).
+  assert.equal(shell.focusKey(), "1B");
   shell.pressSeat("1");
   assert.equal(shell.focusKey(), "1A");
   shell.pressSeat("1");
@@ -678,7 +681,8 @@ test("GWT split header click lands on the due pile and does not toggle", () => {
   shell.pressSeat("1");
   shell.pressRank("K");
   shell.advanceFocus();
-  assert.equal(shell.focusKey(), "1A");
+  // A is 21, so the advance leaves A for open B (keyboard_twenty_one_auto_advances).
+  assert.equal(shell.focusKey(), "1B");
   shell.pressSeat("1");
   assert.equal(shell.focusKey(), "1B");
   shell.pressSeat("1");
