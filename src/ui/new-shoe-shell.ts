@@ -70,17 +70,49 @@ export type NewShoeShell = {
    * Backspace → withdraw the resolved card.
    * After a manual seat click, that pile's last card.
    * After observation auto-advance, the last card this shell registered.
-   * An empty manual pile posts nothing. Focus does not move.
+   * An empty manual pile posts nothing.
+   * Ordinary dealing does not move focus. A 21 or bust advance does:
+   * Backspace returns focus to the pile that advanced (keyboard_bust_advance_backspace_returns_focus).
    */
   pressWithdraw(): WithdrawPress;
-  /** Header click. A split seat lands on its due pile. Stateless. UI only. */
+  /**
+   * Header click. A split seat lands on its due pile: A unless A is 21 or
+   * bust, otherwise B, and A again when both piles are 21 or bust
+   * (ruling_q6, Kristoffer 2026-11-24 14:12). A disabled seat is not
+   * focused; the click walks to the next active seat on the left.
+   * Repeating the click does not toggle. UI only.
+   */
   pressSeat(seat: string): void;
   /**
+   * ArrowLeft / ArrowRight. UI only, and a manual Backspace focus
+   * (keyboard_arrow_sets_manual_focus_for_backspace).
+   * Left walks 1→2→…→7→dealer→1. Right walks the other way.
+   * Inside a flipped split, ArrowLeft from A goes to B when B is open,
+   * otherwise to the next seat on the left. An arrow that enters a split
+   * seat lands on the pile nearest on screen, or the other pile when that
+   * nearest one is empty, 21 or bust and the other is open.
+   */
+  pressArrow(direction: "left" | "right"): void;
+  /**
+   * Space toggles the focused player seat. UI only, no event.
+   * The dealer cannot be toggled. Disabling the focused seat moves focus
+   * left. Re-enabling does not move focus.
+   */
+  pressSpace(): void;
+  /**
+   * Right-click toggles that player seat and does not move focus,
+   * including when the seat is the focused one. The dealer cannot be toggled.
+   */
+  pressToggleSeat(seat: string): void;
+  /**
    * Ordinary-seat auto-advance after the last Observe.
-   * The live page calls this. Focus stays on a 3rd+ player card
-   * and on a 2nd+ dealer card. Seat 7's second card and the dealer's
-   * first card jump to seat 1. Split pile A at 2 cards moves left.
-   * Split pile B does not auto-advance to A.
+   * 1st and 2nd cards move left. The last active player's 2nd card skips
+   * the dealer and jumps to the first active seat. A 3rd+ card stays unless
+   * the pile is 21 or bust. Split: A's 2nd card (or a 21/bust on A) goes to
+   * B when B is not 21 or bust, then B's 2nd card goes to the next active
+   * seat. Landing on a split seat uses that due pile and skips the seat
+   * when both piles are 21 or bust. A 21 or bust advance arms Backspace
+   * to put focus back on that pile.
    */
   advanceFocus(): void;
   /** UI focus pile, or null before NEW SHOE and before any header click. */
@@ -107,6 +139,13 @@ export function createNewShoeShell(
   const splitReady = new Set<string>();
   /** UI focus. Null until NEW SHOE or a header click. Not an event. */
   let uiFocus: string | null = null;
+  /** Player seats switched off. UI only — not events, not reloaded. */
+  const disabled = new Set<string>();
+  /**
+   * Pile a 21/bust auto-advance left. Backspace returns focus here.
+   * An ordinary dealing advance does not set it.
+   */
+  let returnPile: string | null = null;
   /** Manual header click targets the focused pile. Observation targets the last card. */
   let provenance: "manual" | "observation" = "observation";
   const splitBases = new Set<string>();
@@ -154,15 +193,19 @@ export function createNewShoeShell(
       focusHasCard = false;
       openSeat = "1";
       uiFocus = "1";
+      disabled.clear();
+      returnPile = null;
       provenance = "observation";
       lastDeal = null;
       rememberViews(felt, counts, remaining);
-      page = renderNewShoe(felt, counts, remaining, uiFocus);
+      page = renderNewShoe(felt, counts, remaining, uiFocus, disabled);
       return { cancelled: false, post, html: page };
     },
 
     pressRank(rank: string) {
       if (!shoeLive || !isPadRank(rank)) return { rejected: true };
+      returnPile = null;
+      retargetDisabledFocus();
 
       const seat = uiFocus ?? "1";
       const post = handle({
@@ -188,7 +231,7 @@ export function createNewShoeShell(
       openSeat = seat;
       focusHasCard = true;
       lastDeal = { seat, length: pileLength(felt, seat) };
-      page = renderNewShoe(felt, counts, remaining, uiFocus);
+      page = renderNewShoe(felt, counts, remaining, uiFocus, disabled);
       return { rejected: false, post, html: page };
     },
 
@@ -214,7 +257,7 @@ export function createNewShoeShell(
         "remaining",
       );
       rememberViews(felt, counts, remaining);
-      page = renderNewShoe(felt, counts, remaining, uiFocus);
+      page = renderNewShoe(felt, counts, remaining, uiFocus, disabled);
       return { rejected: false, post, html: page };
     },
 
@@ -242,25 +285,80 @@ export function createNewShoeShell(
       rekeySplit(seat);
       uiFocus = `${seat}A`;
       provenance = "manual";
+      returnPile = null;
       rememberViews(felt, counts, remaining);
-      page = renderNewShoe(felt, counts, remaining, uiFocus);
+      page = renderNewShoe(felt, counts, remaining, uiFocus, disabled);
       return { rejected: false, post, html: page };
     },
 
     pressSeat(seat: string) {
       if (!isPlainSeat(seat)) return;
-      // Due pile is NA while NA's card total is below 21, otherwise NB.
-      // Card total, not the displayed Total label. Repeating the click
-      // does not toggle.
-      uiFocus = splitBases.has(seat) ? `${seat}${duePile(seat)}` : seat;
+      // Due pile: A while A is not 21 or bust, else B, else A when both
+      // are. Card total, not the stale Total label. A click does not toggle.
+      // A disabled seat sends focus to the next active seat on the left.
+      returnPile = null;
+      if (seat !== "D" && disabled.has(seat)) {
+        const dest = walkActive(moveLeft(seat));
+        uiFocus = splitBases.has(dest) ? `${dest}${duePile(dest)}` : dest;
+      } else {
+        uiFocus = splitBases.has(seat) ? `${seat}${duePile(seat)}` : seat;
+      }
       provenance = "manual";
+      repaint();
+    },
+
+    pressArrow(direction: "left" | "right") {
+      if (!shoeLive || !uiFocus) return;
+      returnPile = null;
+      const base = focusBase(uiFocus);
+      if (!base) return;
+      if (direction === "left") {
+        if (uiFocus.endsWith("A") && pilePhase(base, "B") === "open") {
+          uiFocus = `${base}B`;
+        } else {
+          uiFocus = enterSeat(moveLeft(base), "right");
+        }
+      } else if (uiFocus.endsWith("B") && pilePhase(base, "A") === "open") {
+        uiFocus = `${base}A`;
+      } else {
+        uiFocus = enterSeat(moveRight(base), "left");
+      }
+      provenance = "manual";
+      repaint();
+    },
+
+    pressSpace() {
+      if (!uiFocus) return;
+      const base = focusBase(uiFocus);
+      if (!base || base === "D") return;
+      returnPile = null;
+      if (disabled.has(base)) {
+        disabled.delete(base);
+        repaint();
+        return;
+      }
+      disabled.add(base);
+      uiFocus = enterSeat(moveLeft(base), "right");
+      provenance = "manual";
+      repaint();
+    },
+
+    pressToggleSeat(seat: string) {
+      if (seat === "D" || !isPlainSeat(seat)) return;
+      if (disabled.has(seat)) disabled.delete(seat);
+      else disabled.add(seat);
       repaint();
     },
 
     advanceFocus() {
       if (!lastDeal) return;
-      uiFocus = nextFocus(lastDeal.seat, lastDeal.length);
+      const from = lastDeal.seat;
+      const total = totalOf(from);
+      const done = total >= 21;
+      const next = computeNext(from, lastDeal.length, done);
+      uiFocus = next;
       provenance = "observation";
+      returnPile = done && next !== from ? from : null;
       repaint();
     },
 
@@ -288,8 +386,14 @@ export function createNewShoeShell(
         "remaining",
       );
       rememberViews(felt, counts, remaining);
+      const jumped = returnPile !== null && target.seat === returnPile;
+      returnPile = null;
+      if (jumped) {
+        uiFocus = target.seat;
+        provenance = "manual";
+      }
       focusHasCard = registered.some((card) => card.seat === openSeat);
-      page = renderNewShoe(felt, counts, remaining, uiFocus);
+      page = renderNewShoe(felt, counts, remaining, uiFocus, disabled);
       return { rejected: false, post, html: page };
     },
 
@@ -317,19 +421,148 @@ export function createNewShoeShell(
       focusHasCard = false;
       openSeat = "1";
       uiFocus = "1";
+      disabled.clear();
+      returnPile = null;
       provenance = "observation";
       lastDeal = null;
       rememberViews(felt, counts, remaining);
-      page = renderNewShoe(felt, counts, remaining, uiFocus);
+      page = renderNewShoe(felt, counts, remaining, uiFocus, disabled);
       return { rejected: false, post, html: page };
     },
   };
 
   function duePile(seat: string): "A" | "B" {
-    const cards =
-      feltNow?.split_piles.find((pile) => pile.seat === seat && pile.hand === "A")
-        ?.cards ?? [];
-    return computeTotal(cards.map((card) => card.rank)) < 21 ? "A" : "B";
+    return autoDue(seat) ?? "A";
+  }
+
+  function totalOf(seat: string): number {
+    return computeTotal(cardsOn(seat).map((card) => card.rank));
+  }
+
+  function cardsOn(seat: string): { rank: Rank }[] {
+    if (!feltNow) return [];
+    if (seat.length === 2 && (seat.endsWith("A") || seat.endsWith("B"))) {
+      const hand = seat.endsWith("A") ? "A" : "B";
+      const base = seat.slice(0, 1);
+      return (
+        feltNow.split_piles.find((pile) => pile.seat === base && pile.hand === hand)
+          ?.cards ?? []
+      );
+    }
+    return feltNow.seat_piles.find((pile) => pile.seat === seat)?.cards ?? [];
+  }
+
+  type PilePhase = "absent" | "empty" | "open" | "done";
+
+  function pilePhase(base: string, hand: "A" | "B"): PilePhase {
+    if (!splitBases.has(base)) return "absent";
+    const cards = cardsOn(`${base}${hand}`);
+    if (cards.length === 0) return "empty";
+    if (computeTotal(cards.map((card) => card.rank)) >= 21) return "done";
+    return "open";
+  }
+
+  /** A while A is not 21 or bust, else B, else neither (both done). */
+  function autoDue(base: string): "A" | "B" | null {
+    const a = pilePhase(base, "A");
+    const b = pilePhase(base, "B");
+    if (a === "open" || a === "empty") return "A";
+    if (b === "open" || b === "empty") return "B";
+    return null;
+  }
+
+  function firstPlaying(): string {
+    for (const seat of ["1", "2", "3", "4", "5", "6", "7"]) {
+      if (!disabled.has(seat)) return seat;
+    }
+    return "D";
+  }
+
+  function isLastActive(seat: string): boolean {
+    for (let number = 7; number >= 1; number -= 1) {
+      const candidate = String(number);
+      if (!disabled.has(candidate)) return candidate === seat;
+    }
+    return false;
+  }
+
+  function landAuto(start: string): string {
+    let seat = start;
+    for (let guard = 0; guard < MOVE_LEFT.length * 2; guard += 1) {
+      if (seat !== "D" && disabled.has(seat)) {
+        seat = moveLeft(seat);
+        continue;
+      }
+      if (splitBases.has(seat)) {
+        const due = autoDue(seat);
+        if (due) return `${seat}${due}`;
+        seat = moveLeft(seat);
+        continue;
+      }
+      return seat;
+    }
+    return firstPlaying();
+  }
+
+  function walkActive(start: string): string {
+    let seat = start;
+    for (let guard = 0; guard < MOVE_LEFT.length * 2; guard += 1) {
+      if (seat === "D" || !disabled.has(seat)) return seat;
+      seat = moveLeft(seat);
+    }
+    return start;
+  }
+
+  function retargetDisabledFocus(): void {
+    if (!uiFocus) return;
+    const base = focusBase(uiFocus);
+    if (!base || base === "D" || !disabled.has(base)) return;
+    uiFocus = landAuto(moveLeft(base));
+  }
+
+  function arrowPile(base: string, from: "left" | "right"): "A" | "B" {
+    const nearest = from === "right" ? "A" : "B";
+    const other = nearest === "A" ? "B" : "A";
+    const near = pilePhase(base, nearest);
+    const alt = pilePhase(base, other);
+    if ((near === "empty" || near === "done") && alt === "open") return other;
+    return nearest;
+  }
+
+  function enterSeat(start: string, from: "left" | "right"): string {
+    const step = from === "right" ? moveLeft : moveRight;
+    let seat = start;
+    for (let guard = 0; guard < MOVE_LEFT.length * 2; guard += 1) {
+      if (seat !== "D" && disabled.has(seat)) {
+        seat = step(seat);
+        continue;
+      }
+      if (splitBases.has(seat)) return `${seat}${arrowPile(seat, from)}`;
+      return seat;
+    }
+    return seat;
+  }
+
+  function computeNext(seat: string, length: number, done: boolean): string {
+    if (seat.length === 2 && (seat.endsWith("A") || seat.endsWith("B"))) {
+      const base = seat.slice(0, 1);
+      const leave = length === 2 || (length > 2 && done);
+      if (!leave) return seat;
+      if (seat.endsWith("A")) {
+        const b = pilePhase(base, "B");
+        if (b === "open" || b === "empty") return `${base}B`;
+        return landAuto(moveLeft(base));
+      }
+      return landAuto(moveLeft(base));
+    }
+    if (seat === "D") {
+      if (length === 1 || done) return firstPlaying();
+      return "D";
+    }
+    if (length > 2 && !done) return seat;
+    if (length <= 0) return seat;
+    if (length === 2 && isLastActive(seat)) return firstPlaying();
+    return landAuto(moveLeft(seat));
   }
 
   function withdrawTarget(): { rank: Rank; seat: string } | undefined {
@@ -382,7 +615,7 @@ export function createNewShoeShell(
 
   function repaint(): void {
     if (!shoeLive || !feltNow || !countsNow || !remainingNow) return;
-    page = renderNewShoe(feltNow, countsNow, remainingNow, uiFocus);
+    page = renderNewShoe(feltNow, countsNow, remainingNow, uiFocus, disabled);
   }
 }
 
@@ -437,27 +670,11 @@ function moveLeft(seat: string): string {
   return MOVE_LEFT[(index + 1) % MOVE_LEFT.length] ?? "1";
 }
 
-/** No seat is disabled in this slice, so the first playing seat is 1. */
-function firstPlayingSeat(): string {
-  return "1";
-}
-
-/**
- * Focus after an Observe. Ordinary seats move left at 1 or 2 cards.
- * Seat 7's second card and the dealer's first card jump to seat 1.
- * A 3rd+ player card and a 2nd+ dealer card stay. Split A at exactly
- * 2 cards moves left (not to B). Any other split pile stays.
- */
-function nextFocus(seat: string, length: number): string {
-  if (seat.length === 2 && (seat.endsWith("A") || seat.endsWith("B"))) {
-    if (seat.endsWith("A") && length === 2) return moveLeft(seat.slice(0, 1));
-    return seat;
-  }
-  if (seat === "D") return length === 1 ? firstPlayingSeat() : "D";
-  if (length <= 0) return seat;
-  if (length === 1) return moveLeft(seat);
-  if (length === 2) return seat === "7" ? firstPlayingSeat() : moveLeft(seat);
-  return seat;
+/** Screen-right: 1 → dealer → 7 → … → 2 → 1. */
+function moveRight(seat: string): string {
+  const index = MOVE_LEFT.indexOf(seat as (typeof MOVE_LEFT)[number]);
+  if (index < 0) return "D";
+  return MOVE_LEFT[(index - 1 + MOVE_LEFT.length) % MOVE_LEFT.length] ?? "D";
 }
 
 function pileLength(felt: FeltTable, seat: string): number {
@@ -489,8 +706,11 @@ function renderNewShoe(
   counts: CountsInfoBar,
   remaining: RemainingComposition,
   focus: string | null,
+  disabled: ReadonlySet<string>,
 ): string {
-  const seats = felt.seat_piles.map((pile) => renderSeat(felt, pile, focus)).join("\n");
+  const seats = felt.seat_piles
+    .map((pile) => renderSeat(felt, pile, focus, disabled))
+    .join("\n");
   return frame(
     `<div id="table">\n${seats}\n</div>\n${renderInfo(counts)}\n${renderDonut(remaining)}`,
   );
@@ -500,8 +720,10 @@ function renderSeat(
   felt: FeltTable,
   pile: FeltTable["seat_piles"][number],
   focus: string | null,
+  disabled: ReadonlySet<string>,
 ): string {
   const classes = ["seat-round"];
+  if (disabled.has(pile.seat)) classes.push("disabled");
   if (pile.seat === focusBase(focus)) classes.push("active");
   if (pile.seat === felt.screen.hero_seat) classes.push("your-seat");
   const split = felt.split_piles.filter((item) => item.seat === pile.seat);

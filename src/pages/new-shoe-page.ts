@@ -53,7 +53,10 @@ type BoundNode = {
   hidden?: boolean;
   textContent: string | null;
   getAttribute(name: string): string | null;
-  addEventListener(type: string, listener: () => void): void;
+  addEventListener(
+    type: string,
+    listener: (event?: { preventDefault?: () => void }) => void,
+  ): void;
 };
 
 type AppRoot = {
@@ -156,6 +159,18 @@ export function mountNewShoePage(
 
   document.addEventListener?.("keydown", (event) => {
     const key = event.key ?? "";
+    if (key === "ArrowLeft" || key === "ArrowRight") {
+      event.preventDefault?.();
+      shell.pressArrow(key === "ArrowLeft" ? "left" : "right");
+      paint();
+      return;
+    }
+    if (key === " ") {
+      event.preventDefault?.();
+      shell.pressSpace();
+      paint();
+      return;
+    }
     if (key === "Backspace") {
       event.preventDefault?.();
       const result = shell.pressWithdraw();
@@ -277,7 +292,7 @@ function bindSuitPad(root: AppRoot, shell: NewShoeShell, paint: () => void): voi
   }
 }
 
-/** Focus ring is UI chrome. A header click tells the shell the withdraw pile. */
+/** Focus ring is UI chrome. A header click tells the shell the withdraw pile. Right-click toggles the seat and does not move focus. */
 function bindFocus(root: AppRoot, shell: NewShoeShell, paint: () => void): void {
   const rounds = Array.from(root.querySelectorAll(".seat-round"));
   const seats = IDLE_SEATS;
@@ -287,6 +302,11 @@ function bindFocus(root: AppRoot, shell: NewShoeShell, paint: () => void): void 
     if (!round || !seat) continue;
     round.addEventListener("click", () => {
       shell.pressSeat(seat);
+      paint();
+    });
+    round.addEventListener("contextmenu", (event) => {
+      event?.preventDefault?.();
+      shell.pressToggleSeat(seat);
       paint();
     });
   }

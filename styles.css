@@ -117,6 +117,7 @@ body {
 .suit.bottom-left { bottom: 0; left: 2px; transform: rotate(180deg); }
 .split-container {
   display: flex;
+  flex-direction: row-reverse;
   gap: 2px;
   justify-content: center;
   margin-top: 10px;
@@ -127,9 +128,19 @@ body {
   flex-direction: column;
   align-items: center;
   border: 2px solid transparent;
+  position: relative;
 }
 .split-hand.active { border-color: #22c55e; box-shadow: 0 0 15px #22c55e44; }
-.split-hand:last-of-type { margin-left: -11px; }
+/* Flipped layout: DOM stays A then B so :last-of-type is B.
+   row-reverse paints A on the right and B on the left.
+   B's right margin is the old -11px. With the 2px gap the visible
+   overlap is 9px, and B (later, z-index 1) draws over A. */
+.split-hand:last-of-type { margin-right: -11px; z-index: 1; }
+.seat-round.disabled {
+  background: #666 !important;
+  color: #aaa !important;
+  box-shadow: 0 2px 8px #0008 !important;
+}
 .split-label { font-size: 0.75rem; color: #aaa; margin-bottom: 4px; }
 .hand-total { font-size: 0.8rem; text-align: center; margin-top: 5px; }
 .split-btn {

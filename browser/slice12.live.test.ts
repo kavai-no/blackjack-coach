@@ -405,19 +405,22 @@ test("felt_split: click #splitBtn-1 after K♥ + K♠, then mid-shoe NEW SHOE", 
     assert.equal(await page.locator("#hand-1B .mini").count(), 1);
     assert.equal(await base.locator(".mini").count(), 0);
     assert.equal(await base.isVisible(), false);
+    // Slice 15: A's second card (the 5) moves focus to B, not seat 2
+    // (keyboard_split_a_then_b_then_next_seat).
     assert.equal(await pileA.evaluate((element) => element.classList.contains("active")), false);
-    assert.equal(await page.locator(".split-hand.active").count(), 0);
+    assert.equal(await pileB.evaluate((element) => element.classList.contains("active")), true);
+    assert.equal(await page.locator(".split-hand.active").count(), 1);
     assert.equal(
       await page.locator('[data-seat="1"] .seat-round').evaluate((element) =>
         element.classList.contains("active"),
       ),
-      false,
+      true,
     );
     assert.equal(
       await page.locator('[data-seat="2"] .seat-round').evaluate((element) =>
         element.classList.contains("active"),
       ),
-      true,
+      false,
     );
     assert.equal(await page.locator(".seat-round.active").count(), 1);
     assert.equal(
