@@ -59,8 +59,13 @@ export type NewShoeShell = {
   pressRank(rank: string): RankPress;
   /** Suit pad → Set suit on the last observe of the focus seat. */
   pressSuit(suit: string): SuitPress;
-  /** Hero `#splitBtn-1` → Split hand. Seat only. */
-  pressSplit(): SplitPress;
+  /**
+   * `#splitBtn-<seat>` → Split hand on that player seat. Seat only.
+   * Focus moves to `<seat>A` as a MANUAL focus, so Backspace right after
+   * SPLIT withdraws A's card (focus_sources_for_withdraw, source 4;
+   * original cardHandler.js:157, seatManager.js:14/:25, cardHandler.js:100-104).
+   */
+  pressSplit(seat: string): SplitPress;
   /**
    * Backspace → withdraw the resolved card.
    * After a manual seat click, that pile's last card.
@@ -98,8 +103,8 @@ export function createNewShoeShell(
   let page = renderIdle();
   let shoeLive = false;
   let focusHasCard = false;
-  let heroSeat: FeltTable["screen"]["hero_seat"] = "1";
-  let splitReady = false;
+  /** Player seats whose SPLIT the felt shows. Copied from the view, not a rule. */
+  const splitReady = new Set<string>();
   /** UI focus. Null until NEW SHOE or a header click. Not an event. */
   let uiFocus: string | null = null;
   /** Manual header click targets the focused pile. Observation targets the last card. */
@@ -213,13 +218,13 @@ export function createNewShoeShell(
       return { rejected: false, post, html: page };
     },
 
-    pressSplit() {
-      if (!shoeLive || !splitReady) return { rejected: true };
+    pressSplit(seat: string) {
+      if (!shoeLive || !splitReady.has(seat)) return { rejected: true };
 
       const post = handle({
         method: "POST",
         path: SPLIT_HAND_PATH,
-        body: { seat: heroSeat },
+        body: { seat },
       });
       if (post.status !== 200) {
         throw new Error(`split_hand HTTP ${post.status}`);
@@ -234,8 +239,9 @@ export function createNewShoeShell(
         handle({ method: "GET", path: REMAINING_PATH }),
         "remaining",
       );
-      rekeySplit(heroSeat);
-      uiFocus = `${heroSeat}A`;
+      rekeySplit(seat);
+      uiFocus = `${seat}A`;
+      provenance = "manual";
       rememberViews(felt, counts, remaining);
       page = renderNewShoe(felt, counts, remaining, uiFocus);
       return { rejected: false, post, html: page };
@@ -368,8 +374,8 @@ export function createNewShoeShell(
     feltNow = felt;
     countsNow = counts;
     remainingNow = remaining;
-    heroSeat = felt.screen.hero_seat;
-    splitReady = felt.screen.split_button_visible;
+    splitReady.clear();
+    for (const seat of felt.screen.split_ready_seats) splitReady.add(seat);
     splitBases.clear();
     for (const pile of felt.split_piles) splitBases.add(pile.seat);
   }
@@ -538,12 +544,12 @@ function renderSplit(
   return `<div class="split-container" id="split-${seat}">${hands}</div>`;
 }
 
-/** Original `.split-btn#splitBtn-<seat>`. Omitted unless the felt says it is visible on the hero. */
+/** Original `.split-btn#splitBtn-<seat>`. Omitted unless the felt lists that seat as split-ready. */
 function renderSplitButton(
   felt: FeltTable,
   seat: FeltTable["seat_piles"][number]["seat"],
 ): string {
-  if (!felt.screen.split_button_visible || seat !== felt.screen.hero_seat) return "";
+  if (!felt.screen.split_ready_seats.includes(seat)) return "";
   return `<button class="split-btn" id="splitBtn-${seat}" type="button">SPLIT</button>`;
 }
 

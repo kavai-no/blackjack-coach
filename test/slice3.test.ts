@@ -104,7 +104,7 @@ test("GWT felt after observe: rank on that seat, suit unset, order D,7..1", () =
   assert.deepEqual(felt.split_piles, []);
   assert.equal(felt.screen.focus_seat, "1");
   assert.equal(felt.screen.hero_seat, "1");
-  assert.equal(felt.screen.split_button_visible, false);
+  assert.deepEqual(felt.screen.split_ready_seats, []);
   assert.deepEqual(
     felt.hand_totals.find((hand) => hand.seat === "1"),
     { seat: "1", total: 5, colour: "#ffd43f", label: "Total: 5" },

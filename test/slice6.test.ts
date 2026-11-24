@@ -159,7 +159,7 @@ test("GWT felt: last registered card leaves that seat; order D,7..1; totals foll
   setSuit(store, { suit: "hearts", seat: "1" });
 
   const before = projectFeltTable(store.read(TABLE_STREAM));
-  assert.equal(before.screen.split_button_visible, false);
+  assert.deepEqual(before.screen.split_ready_seats, []);
   assert.equal(
     before.hand_totals.find((hand) => hand.seat === "1")?.total,
     17,
@@ -193,7 +193,7 @@ test("GWT felt: last registered card leaves that seat; order D,7..1; totals foll
   ]);
   assert.equal(felt.screen.focus_seat, "1");
   assert.equal(felt.screen.hero_seat, "1");
-  assert.equal(felt.screen.split_button_visible, false);
+  assert.deepEqual(felt.screen.split_ready_seats, []);
   assert.equal(felt.screen.new_shoe, "start_shoe");
   assert.equal(felt.screen.next_hand, "complete_hand");
 
@@ -291,7 +291,7 @@ test("GWT felt: last registered card leaves the split pile it landed in", () => 
       card_total: 0,
     },
   ]);
-  assert.equal(felt.screen.split_button_visible, false);
+  assert.deepEqual(felt.screen.split_ready_seats, []);
 });
 
 test("GWT bust card withdrawn: total and colour follow the cards that remain", () => {
@@ -481,13 +481,10 @@ test("GWT withdrawing one king of a hero pair is no longer a pair", () => {
   withdrawCard(store, { rank: "K", seat: "1" });
 
   const before = store.read(TABLE_STREAM).map((event) => event.type);
-  assert.throws(() => splitHand(store, { seat: "1" }), /same rank/);
+  assert.throws(() => splitHand(store, { seat: "1" }), /first two cards/);
   assert.deepEqual(
     store.read(TABLE_STREAM).map((event) => event.type),
     before,
   );
-  assert.equal(
-    projectFeltTable(store.read(TABLE_STREAM)).screen.split_button_visible,
-    false,
-  );
+  assert.deepEqual(projectFeltTable(store.read(TABLE_STREAM)).screen.split_ready_seats, []);
 });

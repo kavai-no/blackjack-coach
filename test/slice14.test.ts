@@ -212,7 +212,7 @@ test("POST /commands/complete-hand has no body and returns ack, events, position
   assert.deepEqual(projected.hand_totals, []);
   assert.equal(projected.screen.focus_seat, "1");
   assert.equal(projected.screen.hero_seat, "1");
-  assert.equal(projected.screen.split_button_visible, false);
+  assert.deepEqual(projected.screen.split_ready_seats, []);
   assert.equal(projected.screen.next_hand, "complete_hand");
 
   const again = ackBody(handle({ method: "POST", path: COMPLETE_HAND_PATH }));
@@ -294,7 +294,7 @@ test("GWT complete_hand_happy: K♠ → K♥, K♠ split on seat 1; NEXT HAND cl
   shell.pressSuit("hearts");
   shell.pressRank("K");
   shell.pressSuit("spades");
-  const split = shell.pressSplit();
+  const split = shell.pressSplit("1");
   assert.equal(split.rejected, false);
   const dealt = store.read(TABLE_STREAM);
   assert.deepEqual(
@@ -440,7 +440,7 @@ test("GWT complete_hand_happy: K♠ → K♥, K♠ split on seat 1; NEXT HAND cl
   calls.length = 0;
   assert.equal(shell.pressWithdraw().rejected, true);
   assert.equal(shell.pressSuit("hearts").rejected, true);
-  assert.equal(shell.pressSplit().rejected, true);
+  assert.equal(shell.pressSplit("1").rejected, true);
   assert.equal(calls.length, 0);
 
   calls.length = 0;
@@ -650,7 +650,7 @@ test("GWT G1 felt_next_hand: after NEXT HAND a suit press and Backspace append n
   shell.pressSuit("hearts");
   shell.pressRank("K");
   shell.pressSuit("spades");
-  assert.equal(shell.pressSplit().rejected, false);
+  assert.equal(shell.pressSplit("1").rejected, false);
   assert.equal(shell.pressNextHand().rejected, false);
   const cleared = store.read(TABLE_STREAM);
   assert.equal(cleared.at(-1)?.type, "hand_completed");
