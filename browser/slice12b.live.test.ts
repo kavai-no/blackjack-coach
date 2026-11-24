@@ -282,6 +282,8 @@ async function pressKey(page: Page, key: string): Promise<void> {
 const YELLOW = "rgb(255, 212, 63)";
 const CYAN = "rgb(0, 255, 245)";
 const PILE_RING = "rgb(34, 197, 94)";
+/** Original modules/strategy.js:642: total >= 17 (not 21, not bust) is '#22c55e'. */
+const GREEN = "rgb(34, 197, 94)";
 
 async function assertNoWithdraw(page: Page): Promise<void> {
   assert.equal(await page.locator("#backspaceBtn").count(), 0);
@@ -308,8 +310,12 @@ async function assertSplitFocus(page: Page, hand: "A" | "B", seat = "1"): Promis
 }
 
 
-async function pileTotal(page: Page, hand: "A" | "B"): Promise<{ text: string; colour: string }> {
-  const label = page.locator(`#hand-1${hand} .hand-total`);
+async function pileTotal(
+  page: Page,
+  hand: "A" | "B",
+  seat = "1",
+): Promise<{ text: string; colour: string }> {
+  const label = page.locator(`#hand-${seat}${hand} .hand-total`);
   return {
     text: (await label.innerText()).trim(),
     colour: await label.evaluate((element) => getComputedStyle(element).color),
@@ -352,6 +358,7 @@ for (const entry of [
       await keyRank(page, "1", entry.king, "K");
       await pressKey(page, "s");
       assert.equal((await page.locator('[data-seat="1"] .hand-total').innerText()).trim(), "Total: 20");
+      assert.equal(await totalColour(page, "1"), GREEN);
 
       const split = page.locator("#splitBtn-1");
       assert.equal(await split.isVisible(), true);
@@ -405,6 +412,129 @@ for (const entry of [
     }
   });
 }
+
+/** Shared Given of the non-seat-1 journeys: K♥ then K♠ on <seat>, Total: 20 green. */
+async function kingsHeartsSpades(page: Page, seat: string, king: string): Promise<void> {
+  await keyRank(page, seat, king, "K");
+  await pressKey(page, "x");
+  await page.locator(`#hand-${seat} .mini[data-suit="hearts"]`).waitFor();
+  await keyRank(page, seat, king, "K");
+  await pressKey(page, "s");
+  const total = page.locator(`[data-seat="${seat}"] .hand-total`).first();
+  assert.equal((await total.innerText()).trim(), "Total: 20");
+  assert.equal(await totalColour(page, seat), GREEN);
+}
+
+// focus_sources_for_withdraw (4) is per seat (split_on_every_player_seat): not only seat 1.
+for (const entry of [
+  { seat: "4", name: "top-row", king: "[" },
+  { seat: "4", name: "numpad", king: "NumpadSubtract" },
+  { seat: "6", name: "top-row", king: "[" },
+  { seat: "6", name: "numpad", king: "NumpadSubtract" },
+] as const) {
+  test(`felt_withdraw post-split Backspace on seat ${entry.seat} (${entry.name} K): withdraws ${entry.seat}A's K♥`, async () => {
+    buildDist();
+    const { server, origin } = await startServer();
+    let browser: Browser | undefined;
+    try {
+      const opened = await openLive(origin);
+      browser = opened.browser;
+      const page = opened.page;
+      await newShoe(page);
+      const seat = entry.seat;
+
+      await kingsHeartsSpades(page, seat, entry.king);
+      const split = page.locator(`#splitBtn-${seat}`);
+      assert.equal(await split.isVisible(), true);
+      assert.equal(await split.isEnabled(), true);
+      await split.click();
+      await page.locator(`#hand-${seat}A .mini[data-rank="K"][data-suit="hearts"]`).waitFor();
+      await page.locator(`#hand-${seat}B .mini[data-rank="K"][data-suit="spades"]`).waitFor();
+      await assertSplitFocus(page, "A", seat);
+      const splitHistory = await readHistory(page);
+      assert.deepEqual(recordedFacts(splitHistory.slice(-1)), [{ type: "hand_split", seat }]);
+
+      // Real Backspace key, no click.
+      await backspace(page);
+      await page.locator(`#hand-${seat}A .mini`).waitFor({ state: "detached" });
+      const after = await readHistory(page);
+      assert.deepEqual(
+        recordedFacts(after.slice(splitHistory.length)),
+        [{ type: "card_withdrawn", rank: "K", seat: `${seat}A` }],
+      );
+      assert.equal(
+        await page.locator(`#hand-${seat}B .mini[data-rank="K"][data-suit="spades"]`).count(),
+        1,
+      );
+      assert.deepEqual(await pileTotal(page, "A", seat), { text: "Total: 10", colour: YELLOW });
+      assert.deepEqual(await pileTotal(page, "B", seat), { text: "Total: 10", colour: YELLOW });
+      await assertSplitFocus(page, "A", seat);
+      await assertNoWithdraw(page);
+      const ranks = await rankCounts(page);
+      for (const rank of RANKS) assert.equal(ranks[rank], rank === "K" ? "31" : "32", rank);
+      assert.equal(await hoverSuit(page, "spades"), "♠: 103");
+      assert.equal(await hoverSuit(page, "hearts"), "♥: 104");
+
+      // Emptied A keeps the manual focus: a second Backspace does nothing.
+      await backspace(page);
+      assert.deepEqual(await readHistory(page), after);
+      assert.equal(await page.locator(`#hand-${seat}B .mini[data-rank="K"]`).count(), 1);
+    } finally {
+      await close(server, browser);
+    }
+  });
+}
+
+// split_hand_after_next_hand (03) on a non-hero seat: the hand boundary resets seat 4's first two cards.
+test("felt_split v2: seat 4 splits K♥ K♠ after NEXT HAND when it held 5♥ last hand", async () => {
+  buildDist();
+  const { server, origin } = await startServer();
+  let browser: Browser | undefined;
+  try {
+    const opened = await openLive(origin);
+    browser = opened.browser;
+    const page = opened.page;
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    await newShoe(page);
+
+    await keyRank(page, "4", "5", "5");
+    await pressKey(page, "x");
+    await page.locator('#hand-4 .mini[data-rank="5"][data-suit="hearts"]').waitFor();
+    const next = page.getByRole("button", { name: "NEXT HAND" });
+    assert.equal(await next.isVisible(), true);
+    assert.equal(await next.isEnabled(), true);
+    await next.click();
+    await page.locator("#hand-4 .mini").waitFor({ state: "detached" });
+    assert.equal((await readHistory(page)).at(-1)?.type, "hand_completed");
+
+    await kingsHeartsSpades(page, "4", "NumpadSubtract");
+    const split = page.locator("#splitBtn-4");
+    assert.equal(await split.isVisible(), true);
+    await split.click();
+    await page.locator('#hand-4A .mini[data-rank="K"][data-suit="hearts"]').waitFor();
+    await page.locator('#hand-4B .mini[data-rank="K"][data-suit="spades"]').waitFor();
+    assert.deepEqual(recordedFacts((await readHistory(page)).slice(-1)), [
+      { type: "hand_split", seat: "4" },
+    ]);
+    assert.equal(await page.locator("#hand-4A .mini").count(), 1);
+    assert.equal(await page.locator("#hand-4B .mini").count(), 1);
+    assert.equal((await pileTotal(page, "A", "4")).text, "Total: 10");
+    assert.equal((await pileTotal(page, "B", "4")).text, "Total: 10");
+    await assertSplitFocus(page, "A", "4");
+    const ranks = await rankCounts(page);
+    assert.equal(ranks.K, "30");
+    assert.equal(ranks["5"], "31");
+    assert.equal(await hoverSuit(page, "hearts"), "♥: 102");
+    assert.equal(await hoverSuit(page, "spades"), "♠: 103");
+    assert.deepEqual(errors, []);
+  } finally {
+    await close(server, browser);
+  }
+});
 
 test("felt_split v2: seat 4 splits 10+K, the dealer never shows SPLIT, J+Q shows on seat 2", async () => {
   buildDist();
